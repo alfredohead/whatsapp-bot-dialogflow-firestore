@@ -1,16 +1,14 @@
-// index.js con inicialización segura del proyecto Firestore (sin projectId manual)
+// index.js con lógica para responder por área
 const { Client } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 const dialogflow = require('@google-cloud/dialogflow');
 const admin = require('firebase-admin');
 const fs = require('fs');
 
-// Credenciales y cliente de Dialogflow
 const credentials = JSON.parse(fs.readFileSync('dialogflow-key.json', 'utf8'));
 const sessionClient = new dialogflow.SessionsClient({ credentials });
 const projectId = credentials.project_id;
 
-// Inicializar Firebase Admin SDK (forma compatible con Firestore)
 admin.initializeApp({
   credential: admin.credential.cert({
     clientEmail: credentials.client_email,
@@ -22,7 +20,6 @@ admin.initializeApp({
 const db = admin.firestore();
 const sesionesRef = db.collection('sesiones');
 
-// Verificar conexión segura a Firestore al inicio creando un doc temporal
 (async () => {
   try {
     await sesionesRef.doc('verificacion_test').set({ check: true });
@@ -35,7 +32,6 @@ const sesionesRef = db.collection('sesiones');
   }
 })();
 
-// Inicializar WhatsApp Web
 const client = new Client();
 
 client.on('qr', (qr) => {
@@ -46,7 +42,6 @@ client.on('ready', () => {
   console.log('✅ Asistente de WhatsApp listo');
 });
 
-// Utilidades de sesión Firestore
 async function obtenerSesion(numero) {
   const doc = await sesionesRef.doc(numero).get();
   return doc.exists ? doc.data() : { modo: 'bot' };
@@ -56,10 +51,13 @@ async function guardarSesion(numero, datos) {
   await sesionesRef.doc(numero).set(datos);
 }
 
-// Manejo de mensajes
 client.on('message', async (message) => {
   const numero = message.from;
-  const texto = message.body.toLowerCase().trim();
+  const texto = message.body?.toLowerCase().trim();
+
+  if (!texto) {
+    return message.reply('No entendí tu mensaje. ¿Podés repetirlo?');
+  }
 
   const frases_humano = [
     "quiero hablar con alguien", "necesito atención humana",
@@ -81,17 +79,16 @@ client.on('message', async (message) => {
       await guardarSesion(numero, { modo: 'bot' });
       return message.reply("✅ Has vuelto al asistente virtual. ¿En qué puedo ayudarte?");
     } else {
-      return; // silencio mientras está en modo humano
+      return;
     }
   }
 
-  // Procesar con Dialogflow
   const sessionPath = `projects/${projectId}/agent/sessions/${numero}`;
   const request = {
     session: sessionPath,
     queryInput: {
       text: {
-        text: message.body,
+        text: texto,
         languageCode: 'es',
       },
     },
@@ -100,8 +97,21 @@ client.on('message', async (message) => {
   try {
     const responses = await sessionClient.detectIntent(request);
     const result = responses[0].queryResult;
-    const respuesta = result.fulfillmentText || 'No entendí, ¿puedes repetir?';
-    message.reply(respuesta);
+    const contextos = result.outputContexts.map(c => c.name.split('/').pop());
+    const area = result.parameters?.fields?.area?.stringValue || '';
+    let respuesta = result.fulfillmentText;
+
+    if (contextos.includes("consulta_programas-followup")) {
+      if (area.toLowerCase().includes("punto")) {
+        respuesta = "📚 Para inscribirte a los cursos del Punto Digital:\n👉 https://cursos.sanmartinmza.gob.ar\n📩 punto.digital@sanmartinmza.gob.ar\n📞 2634259743\n📍 Malvinas Argentinas y Eva Perón, San Martín";
+      } else if (area.toLowerCase().includes("economía")) {
+        respuesta = "🧶 Para Economía Social:\n📩 economia.social@sanmartinmza.gob.ar\n📞 2634259744\n📍 PASIP, Ruta 7 y Carril San Pedro, Palmira\n👉 Info: https://www.mendoza.gov.ar/desarrollosocial/subsecretariads/areas/dllo-emprendedor/";
+      } else if (area.toLowerCase().includes("incubadora")) {
+        respuesta = "🚀 Para postular a la Incubadora de Empresas:\n📩 elincubador@sanmartinmza.gob.ar\n📞 2634259744\n📍 PASIP, Ruta 7 y Carril San Pedro, Palmira";
+      }
+    }
+
+    message.reply(respuesta || "No entendí, ¿puedes repetir?");
   } catch (error) {
     console.error('Error en Dialogflow:', error);
     message.reply('Lo siento, algo falló. Intenta de nuevo.');
