@@ -3,9 +3,9 @@ const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 const dialogflow = require('@google-cloud/dialogflow');
 const admin = require('firebase-admin');
-const fs = require('fs');
 
-const credentials = JSON.parse(fs.readFileSync('dialogflow-key.json', 'utf8'));
+// ✅ Otra solución: cargar las credenciales desde variables de entorno
+const credentials = JSON.parse(process.env.DIALOGFLOW_JSON);
 const sessionClient = new dialogflow.SessionsClient({ credentials });
 const projectId = credentials.project_id;
 
