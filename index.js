@@ -1,13 +1,11 @@
-// index.js con lógica para responder por área
-const { Client } = require('whatsapp-web.js');
+// index.js con lógica para responder por área y mantener sesión de WhatsApp
+const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 const dialogflow = require('@google-cloud/dialogflow');
 const admin = require('firebase-admin');
 const fs = require('fs');
 
-const credentials = process.env.DIALOGFLOW_JSON
-  ? JSON.parse(process.env.DIALOGFLOW_JSON)
-  : JSON.parse(fs.readFileSync('dialogflow-key.json', 'utf8'));
+const credentials = JSON.parse(fs.readFileSync('dialogflow-key.json', 'utf8'));
 const sessionClient = new dialogflow.SessionsClient({ credentials });
 const projectId = credentials.project_id;
 
@@ -35,6 +33,7 @@ const sesionesRef = db.collection('sesiones');
 })();
 
 const client = new Client({
+  authStrategy: new LocalAuth(),
   puppeteer: {
     args: ['--no-sandbox', '--disable-setuid-sandbox']
   }
