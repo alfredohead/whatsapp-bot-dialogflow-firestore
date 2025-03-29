@@ -5,7 +5,9 @@ const dialogflow = require('@google-cloud/dialogflow');
 const admin = require('firebase-admin');
 const fs = require('fs');
 
-const credentials = JSON.parse(fs.readFileSync('dialogflow-key.json', 'utf8'));
+const credentials = process.env.DIALOGFLOW_JSON
+  ? JSON.parse(process.env.DIALOGFLOW_JSON)
+  : JSON.parse(fs.readFileSync('dialogflow-key.json', 'utf8'));
 const sessionClient = new dialogflow.SessionsClient({ credentials });
 const projectId = credentials.project_id;
 
