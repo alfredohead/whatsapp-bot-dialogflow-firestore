@@ -5,8 +5,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # ✅ Soluciona permisos en package-lock.json
-RUN chmod 644 package-lock.json && \
-    npm install --omit=dev
+RUN npm install --omit=dev
 
 COPY . .
 
