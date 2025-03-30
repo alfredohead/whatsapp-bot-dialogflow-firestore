@@ -1,14 +1,15 @@
-// index.js con lógica para responder por área y mantener sesión de WhatsApp
 const { Client, LocalAuth } = require('whatsapp-web.js');
-const qrcode = require('qrcode-terminal');
+const qrcode = require('qrcode');
+const express = require('express');
 const dialogflow = require('@google-cloud/dialogflow');
 const admin = require('firebase-admin');
 
-// ✅ Otra solución: cargar las credenciales desde variables de entorno
+// Cargar credenciales desde variable de entorno
 const credentials = JSON.parse(process.env.DIALOGFLOW_JSON);
 const sessionClient = new dialogflow.SessionsClient({ credentials });
 const projectId = credentials.project_id;
 
+// Inicializar Firebase
 admin.initializeApp({
   credential: admin.credential.cert({
     clientEmail: credentials.client_email,
@@ -20,18 +21,20 @@ admin.initializeApp({
 const db = admin.firestore();
 const sesionesRef = db.collection('sesiones');
 
+// Test de conexión a Firestore
 (async () => {
   try {
     await sesionesRef.doc('verificacion_test').set({ check: true });
     await sesionesRef.doc('verificacion_test').delete();
     console.log('✅ Firestore conectado correctamente');
   } catch (error) {
-    console.error('❌ ERROR: No se pudo conectar a Firestore. ¿Ya creaste la base y configuraste permisos?');
+    console.error('❌ ERROR: No se pudo conectar a Firestore.');
     console.error(error.message);
     process.exit(1);
   }
 })();
 
+// Crear cliente de WhatsApp
 const client = new Client({
   authStrategy: new LocalAuth(),
   puppeteer: {
@@ -39,14 +42,19 @@ const client = new Client({
   }
 });
 
-client.on('qr', (qr) => {
-  qrcode.generate(qr, { small: true });
+// QR como imagen (versión web)
+let latestQR = '';
+
+client.on('qr', async (qr) => {
+  latestQR = qr;
+  console.log('⚠️ Escaneá el QR desde: /qr');
 });
 
 client.on('ready', () => {
   console.log('✅ Asistente de WhatsApp listo');
 });
 
+// Manejo de sesión
 async function obtenerSesion(numero) {
   const doc = await sesionesRef.doc(numero).get();
   return doc.exists ? doc.data() : { modo: 'bot' };
@@ -56,13 +64,12 @@ async function guardarSesion(numero, datos) {
   await sesionesRef.doc(numero).set(datos);
 }
 
+// Manejo de mensajes
 client.on('message', async (message) => {
   const numero = message.from;
   const texto = message.body?.toLowerCase().trim();
 
-  if (!texto) {
-    return message.reply('No entendí tu mensaje. ¿Podés repetirlo?');
-  }
+  if (!texto) return message.reply('No entendí tu mensaje. ¿Podés repetirlo?');
 
   const frases_humano = [
     "quiero hablar con alguien", "necesito atención humana",
@@ -116,12 +123,30 @@ client.on('message', async (message) => {
       }
     }
 
-    message.reply(respuesta || "No entendí, ¿puedes repetir?");
+    message.reply(respuesta || "No entendí, ¿podés repetir?");
   } catch (error) {
     console.error('Error en Dialogflow:', error);
     message.reply('Lo siento, algo falló. Intenta de nuevo.');
   }
 });
 
+// Iniciar WhatsApp
 client.initialize();
 
+// Servidor Express para mantener Railway activo y mostrar el QR
+const app = express();
+
+app.get('/', (_, res) => res.send('Bot activo'));
+
+app.get('/qr', async (_, res) => {
+  if (!latestQR) return res.send('QR no generado aún. Esperá unos segundos...');
+  try {
+    const qrImage = await qrcode.toDataURL(latestQR);
+    res.send(`<div style="text-align:center;"><h3>Escaneá el QR para iniciar sesión</h3><img src="${qrImage}" /></div>`);
+  } catch (err) {
+    res.send('Error generando QR.');
+  }
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Servidor Express corriendo en el puerto ${PORT}`));
