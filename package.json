@@ -1,23 +1,18 @@
 {
   "name": "asistente-whatsapp",
   "version": "1.0.0",
-  "description": "",
+  "description": "Bot de WhatsApp con integraci\u00f3n a Dialogflow y Firestore",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "engines": {
+    "node": ">=18"
+  },
   "dependencies": {
-    "@google-cloud/dialogflow": "^4.7.0",
-    "chrome-aws-lambda": "^10.1.0",
-    "dialogflow-fulfillment": "^0.6.1",
-    "express": "^4.21.2",
-    "firebase-admin": "^11.11.1",
-    "puppeteer": "^24.4.0",
-    "puppeteer-core": "^10.4.0",
-    "qrcode": "^1.5.4",
-    "whatsapp-web.js": "^1.23.0"
+    "express": "^4.18.2",
+    "puppeteer": "^21.3.8",
+    "qrcode": "^1.5.3",
+    "whatsapp-web.js": "^1.27.0"
   }
 }
