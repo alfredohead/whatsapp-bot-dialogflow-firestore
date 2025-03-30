@@ -1,16 +1,16 @@
-FROM ghcr.io/puppeteer/puppeteer:20.8.1
+FROM browserless/chrome:latest
 
-# Establece directorio de trabajo
+# Establecer el directorio de trabajo
 WORKDIR /app
 
-# Copia los archivos
+# Copiar los archivos del proyecto
 COPY . .
 
-# Instala dependencias (usa npm o yarn si preferís)
+# Instalar solo las dependencias del proyecto
 RUN npm install
 
-# Expone el puerto
+# Exponer el puerto esperado por Railway
 EXPOSE 8080
 
-# Comando de arranque
+# Iniciar la app
 CMD ["npm", "start"]
