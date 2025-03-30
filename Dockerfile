@@ -1,18 +1,19 @@
 FROM browserless/chrome:latest
 
-# Crear directorio de la app
+# Crear directorio de trabajo
 WORKDIR /app
 
-# Copiar archivos como root para evitar conflictos de permisos
-USER root
-COPY . .
+# Copiar solo package.json para evitar errores de permisos
+COPY package.json ./
 
-# Instalar solo dependencias de producción
+# Instalar dependencias de producción (sin lockfile)
 RUN npm install --omit=dev
 
-# Exponer el puerto usado por el servidor
+# Copiar el resto del proyecto
+COPY . .
+
+# Exponer el puerto usado por la app
 EXPOSE 8080
 
-# Comando para iniciar la app
+# Iniciar la app
 CMD ["npm", "start"]
-
