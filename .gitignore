@@ -1,6 +1,41 @@
-echo "node_modules\n*.json\n.env" > .gitignore
+ Node modules
 node_modules/
+
+# Archivos de logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Archivos temporales
+*.swp
+.DS_Store
 .env
+.env.*  
+env
+
+# Sesiones de WhatsApp
+.wwebjs_auth/
+.wwebjs_cache/
+
+# Archivos comprimidos
+*.zip
+
+# Archivos del sistema
 *.log
-dialogflow-key.json
+*.sqlite
+*.sqlite3
+*.bak
+*.tmp
+
+# Archivos de base de datos de Chrome (usados por puppeteer o chromium)
+Default/
+CrashpadMetrics.pma
+Local Storage/
+Cookies
+GPUCache/
+IndexedDB/
+Service Worker/
+Session Storage/
+WebStorage/
+
 
