@@ -1,13 +1,9 @@
-# Usa una imagen base oficial de Node.js
 FROM node:18-slim
 
-# Evita mensajes interactivos al instalar paquetes
-ENV DEBIAN_FRONTEND=noninteractive
-
-# Instala las dependencias necesarias para Puppeteer y Google Chrome
-RUN apt-get update && \
-    apt-get install -y \
+# Instalar dependencias necesarias
+RUN apt-get update && apt-get install -y \
     wget \
+    curl \
     gnupg \
     ca-certificates \
     fonts-liberation \
@@ -24,27 +20,28 @@ RUN apt-get update && \
     libxcomposite1 \
     libxdamage1 \
     libxrandr2 \
-    xdg-utils \
-    --no-install-recommends && \
+    libgbm1 \
+    libgtk-3-0 \
+    libxshmfence1 \
+    xdg-utils
+
+# Instalar Google Chrome
+RUN wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | apt-key add - && \
+    echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list && \
+    apt-get update && apt-get install -y google-chrome-stable && \
     rm -rf /var/lib/apt/lists/*
 
-# Instala Google Chrome estable
-RUN wget -q -O google-chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb && \
-    apt-get update && \
-    apt-get install -y ./google-chrome.deb && \
-    rm google-chrome.deb
-
-# Crea el directorio de la app
+# Crear directorio de trabajo
 WORKDIR /app
 
-# Copia los archivos de la app
+# Copiar archivos del proyecto
 COPY . .
 
-# Instala las dependencias
+# Instalar dependencias de Node.js
 RUN npm install
 
-# Expone el puerto
+# Exponer puerto
 EXPOSE 8080
 
-# Comando para iniciar la aplicación
+# Iniciar la aplicación
 CMD ["npm", "start"]
