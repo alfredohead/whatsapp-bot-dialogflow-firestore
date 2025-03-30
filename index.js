@@ -73,5 +73,3 @@ app.get("/qr", (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Servidor Express corriendo en el puerto ${PORT}`);
 });
-
-
