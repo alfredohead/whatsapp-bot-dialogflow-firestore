@@ -1,11 +1,11 @@
+# Usa una imagen base oficial de Node con Chromium compatible
 FROM node:18-slim
 
-# Instalar dependencias necesarias
+# Instala dependencias necesarias
 RUN apt-get update && apt-get install -y \
     wget \
-    curl \
     gnupg \
-    ca-certificates \
+    curl \
     fonts-liberation \
     libappindicator3-1 \
     libasound2 \
@@ -20,28 +20,31 @@ RUN apt-get update && apt-get install -y \
     libxcomposite1 \
     libxdamage1 \
     libxrandr2 \
-    libgbm1 \
-    libgtk-3-0 \
-    libxshmfence1 \
-    xdg-utils
-
-# Instalar Google Chrome
-RUN wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | apt-key add - && \
-    echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list && \
-    apt-get update && apt-get install -y google-chrome-stable && \
+    xdg-utils \
+    --no-install-recommends && \
+    apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Crear directorio de trabajo
+# Instala Google Chrome sin usar apt-key
+RUN curl -fsSL https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /etc/apt/trusted.gpg.d/google.gpg && \
+    echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" \
+    > /etc/apt/sources.list.d/google-chrome.list && \
+    apt-get update && \
+    apt-get install -y google-chrome-stable && \
+    rm -rf /var/lib/apt/lists/*
+
+# Crea la carpeta de la app
 WORKDIR /app
 
-# Copiar archivos del proyecto
+# Copia los archivos del proyecto
 COPY . .
 
-# Instalar dependencias de Node.js
+# Instala dependencias
 RUN npm install
 
-# Exponer puerto
+# Expone el puerto
 EXPOSE 8080
 
-# Iniciar la aplicación
+# Comando para iniciar el servidor
 CMD ["npm", "start"]
+
