@@ -9,7 +9,9 @@ let qrCodeDataUrl = null;
 const client = new Client({
   authStrategy: new LocalAuth(),
   puppeteer: {
+    executablePath: process.env.CHROME_PATH || "/usr/bin/google-chrome",
     args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    headless: true
   },
 });
 
