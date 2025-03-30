@@ -1,6 +1,7 @@
+# Imagen base oficial de Node.js
 FROM node:18-slim
 
-# Instalar dependencias necesarias
+# Instalar dependencias necesarias para Puppeteer y Chrome
 RUN apt-get update && apt-get install -y \
     wget \
     curl \
@@ -10,38 +11,51 @@ RUN apt-get update && apt-get install -y \
     libappindicator3-1 \
     libasound2 \
     libatk-bridge2.0-0 \
-    libatk1.0-0 \
+    libc6 \
+    libcairo2 \
     libcups2 \
     libdbus-1-3 \
-    libgdk-pixbuf2.0-0 \
+    libexpat1 \
+    libfontconfig1 \
+    libgbm1 \
+    libgcc1 \
+    libglib2.0-0 \
+    libgtk-3-0 \
     libnspr4 \
     libnss3 \
-    libx11-xcb1 \
+    libpango-1.0-0 \
+    libu2f-udev \
+    libx11-6 \
     libxcomposite1 \
     libxdamage1 \
+    libxext6 \
+    libxfixes3 \
     libxrandr2 \
-    libgbm1 \
-    libgtk-3-0 \
-    libxshmfence1 \
-    xdg-utils
+    libxrender1 \
+    libxss1 \
+    libxtst6 \
+    lsb-release \
+    xdg-utils \
+    --no-install-recommends
 
-# Instalar Google Chrome
-RUN wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | apt-key add - && \
-    echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list && \
-    apt-get update && apt-get install -y google-chrome-stable && \
+# Agregar repo de Google Chrome y su key
+RUN wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /usr/share/keyrings/google.gpg && \
+    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google.gpg] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list && \
+    apt-get update && \
+    apt-get install -y google-chrome-stable && \
     rm -rf /var/lib/apt/lists/*
 
-# Crear directorio de trabajo
+# Crear carpeta para la app
 WORKDIR /app
 
-# Copiar archivos del proyecto
+# Copiar archivos al contenedor
 COPY . .
 
-# Instalar dependencias de Node.js
+# Instalar dependencias
 RUN npm install
 
 # Exponer puerto
 EXPOSE 8080
 
-# Iniciar la aplicación
+# Comando de inicio
 CMD ["npm", "start"]
