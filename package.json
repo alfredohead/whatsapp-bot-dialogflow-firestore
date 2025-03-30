@@ -11,9 +11,12 @@
   "license": "ISC",
   "dependencies": {
     "@google-cloud/dialogflow": "^4.7.0",
+    "chrome-aws-lambda": "^10.1.0",
     "dialogflow-fulfillment": "^0.6.1",
     "express": "^4.21.2",
     "firebase-admin": "^11.11.1",
+    "puppeteer": "^24.4.0",
+    "puppeteer-core": "^10.4.0",
     "qrcode": "^1.5.4",
     "whatsapp-web.js": "^1.23.0"
   }
