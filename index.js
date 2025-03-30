@@ -1,7 +1,9 @@
 const express = require("express");
 const { Client, LocalAuth } = require("whatsapp-web.js");
 const qrcode = require("qrcode");
-const chromium = require("chrome-aws-lambda");
+const puppeteer = require("puppeteer");
+const fs = require("fs");
+const path = require("path");
 const app = express();
 const PORT = process.env.PORT || 8080;
 
@@ -10,9 +12,18 @@ let qrCodeDataUrl = null;
 const client = new Client({
   authStrategy: new LocalAuth(),
   puppeteer: {
-    executablePath: async () => await chromium.executablePath || "/usr/bin/google-chrome",
-    headless: chromium.headless,
-    args: chromium.args,
+    headless: true,
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-accelerated-2d-canvas",
+      "--no-first-run",
+      "--no-zygote",
+      "--single-process",
+      "--disable-gpu"
+    ],
+    executablePath: "/usr/bin/google-chrome", // asegúrate que existe en Docker
   },
 });
 
@@ -73,3 +84,4 @@ app.get("/qr", (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Servidor Express corriendo en el puerto ${PORT}`);
 });
+
