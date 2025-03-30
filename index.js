@@ -1,7 +1,7 @@
 const express = require("express");
 const { Client, LocalAuth } = require("whatsapp-web.js");
 const qrcode = require("qrcode");
-const chrome = require("chrome-aws-lambda");
+const chromium = require("chrome-aws-lambda");
 const app = express();
 const PORT = process.env.PORT || 8080;
 
@@ -10,9 +10,9 @@ let qrCodeDataUrl = null;
 const client = new Client({
   authStrategy: new LocalAuth(),
   puppeteer: {
-    executablePath: async () => await chrome.executablePath || '/usr/bin/google-chrome',
-    args: chrome.args,
-    headless: chrome.headless,
+    executablePath: async () => await chromium.executablePath || "/usr/bin/google-chrome",
+    headless: chromium.headless,
+    args: chromium.args,
   },
 });
 
