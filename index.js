@@ -1,6 +1,7 @@
 const express = require("express");
 const { Client, LocalAuth } = require("whatsapp-web.js");
 const qrcode = require("qrcode");
+const chrome = require("chrome-aws-lambda");
 const app = express();
 const PORT = process.env.PORT || 8080;
 
@@ -9,8 +10,9 @@ let qrCodeDataUrl = null;
 const client = new Client({
   authStrategy: new LocalAuth(),
   puppeteer: {
-    args: ["--no-sandbox", "--disable-setuid-sandbox"],
-    headless: true
+    executablePath: async () => await chrome.executablePath || '/usr/bin/google-chrome',
+    args: chrome.args,
+    headless: chrome.headless,
   },
 });
 
@@ -71,4 +73,5 @@ app.get("/qr", (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Servidor Express corriendo en el puerto ${PORT}`);
 });
+
 
