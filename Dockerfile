@@ -1,31 +1,7 @@
-<<<<<<< HEAD
-FROM browserless/chrome:latest
+FROM node:18
 
-# Establecer el directorio de trabajo
-WORKDIR /app
-
-# Copiar los archivos del proyecto
-COPY . .
-
-# Instalar solo las dependencias del proyecto
-RUN npm install
-
-# Exponer el puerto esperado por Railway
-EXPOSE 8080
-
-# Iniciar la app
-=======
-# Usa una imagen oficial de Node.js con tamaño reducido
-FROM node:18-slim
-
-# Configuración para evitar prompts durante instalación
-ENV DEBIAN_FRONTEND=noninteractive
-
-# Instalar dependencias necesarias para puppeteer
+# Instalar librerías necesarias para puppeteer
 RUN apt-get update && apt-get install -y \
-    wget \
-    gnupg \
-    ca-certificates \
     fonts-liberation \
     libappindicator3-1 \
     libasound2 \
@@ -41,19 +17,10 @@ RUN apt-get update && apt-get install -y \
     libxdamage1 \
     libxrandr2 \
     xdg-utils \
-    --no-install-recommends && \
-    rm -rf /var/lib/apt/lists/*
+    --no-install-recommends && rm -rf /var/lib/apt/lists/*
 
-# Crear directorio de la app y copiar archivos
 WORKDIR /app
 COPY . .
-
-# Instalar dependencias del proyecto
 RUN npm install
-
-# Exponer el puerto que usa la app
 EXPOSE 8080
-
-# Comando para iniciar el bot
->>>>>>> dbee644 (Agrega configuración para despliegue en Fly.io)
 CMD ["npm", "start"]
