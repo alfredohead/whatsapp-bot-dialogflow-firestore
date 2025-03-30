@@ -1,22 +1,50 @@
+# Usa una imagen base oficial de Node.js
 FROM node:18-slim
 
-# Instalar dependencias necesarias para puppeteer y Chrome
-RUN apt-get update && apt-get install -y     wget     ca-certificates     fonts-liberation     libappindicator3-1     libasound2     libatk-bridge2.0-0     libatk1.0-0     libcups2     libdbus-1-3     libgdk-pixbuf2.0-0     libnspr4     libnss3     libx11-xcb1     libxcomposite1     libxdamage1     libxrandr2     xdg-utils     --no-install-recommends  && rm -rf /var/lib/apt/lists/*
+# Evita mensajes interactivos al instalar paquetes
+ENV DEBIAN_FRONTEND=noninteractive
 
-# Descargar e instalar Google Chrome
-RUN wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | apt-key add - &&     echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list &&     apt-get update && apt-get install -y google-chrome-stable &&     rm -rf /var/lib/apt/lists/*
+# Instala las dependencias necesarias para Puppeteer y Google Chrome
+RUN apt-get update && \
+    apt-get install -y \
+    wget \
+    gnupg \
+    ca-certificates \
+    fonts-liberation \
+    libappindicator3-1 \
+    libasound2 \
+    libatk-bridge2.0-0 \
+    libatk1.0-0 \
+    libcups2 \
+    libdbus-1-3 \
+    libgdk-pixbuf2.0-0 \
+    libnspr4 \
+    libnss3 \
+    libx11-xcb1 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxrandr2 \
+    xdg-utils \
+    --no-install-recommends && \
+    rm -rf /var/lib/apt/lists/*
 
-# Crear directorio de la app
+# Instala Google Chrome estable
+RUN wget -q -O google-chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb && \
+    apt-get update && \
+    apt-get install -y ./google-chrome.deb && \
+    rm google-chrome.deb
+
+# Crea el directorio de la app
 WORKDIR /app
 
-# Copiar archivos de la app
+# Copia los archivos de la app
 COPY . .
 
-# Instalar dependencias
-RUN npm install --omit=dev
+# Instala las dependencias
+RUN npm install
 
-# Exponer el puerto
+# Expone el puerto
 EXPOSE 8080
 
-# Comando de inicio
+# Comando para iniciar la aplicación
 CMD ["npm", "start"]
