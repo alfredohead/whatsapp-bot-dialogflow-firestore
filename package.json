@@ -1,28 +1,20 @@
 {
   "name": "asistente-whatsapp",
   "version": "1.0.0",
-  "description": "Chatbot para atención ciudadana en WhatsApp con Dialogflow y Firestore",
+  "description": "",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
-  "dependencies": {
-    "@google-cloud/dialogflow": "^4.3.0",
-    "express": "^4.18.2",
-    "firebase-admin": "^11.10.1",
-    "qrcode": "^1.5.1",
-    "qrcode-terminal": "^0.12.0",
-    "whatsapp-web.js": "^1.21.1"
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/alfredohead/whatsapp-bot-dialogflow-firestore.git"
-  },
-  "bugs": {
-    "url": "https://github.com/alfredohead/whatsapp-bot-dialogflow-firestore/issues"
-  },
-  "homepage": "https://github.com/alfredohead/whatsapp-bot-dialogflow-firestore#readme",
+  "keywords": [],
   "author": "",
   "license": "ISC",
-  "keywords": []
+  "dependencies": {
+    "@google-cloud/dialogflow": "^4.7.0",
+    "dialogflow-fulfillment": "^0.6.1",
+    "express": "^4.21.2",
+    "firebase-admin": "^11.11.1",
+    "qrcode": "^1.5.4",
+    "whatsapp-web.js": "^1.23.0"
+  }
 }
