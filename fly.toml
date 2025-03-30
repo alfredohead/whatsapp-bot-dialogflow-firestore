@@ -1,4 +1,4 @@
-app = "asistente-whatsapp" # podés cambiarlo si Fly asigna otro nombre
+app = "asistente-whatsapp"
 
 [build]
   dockerfile = "Dockerfile"
