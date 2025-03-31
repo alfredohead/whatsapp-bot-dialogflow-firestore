@@ -1,4 +1,4 @@
-// index.js completo con manejo de errores y conexión a WhatsApp, Firestore y Dialogflow
+// index.js completo y listo para producción en Fly.io
 require('dotenv').config();
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode');
@@ -68,7 +68,6 @@ client.on('message', async (message) => {
 
   const sesion = await obtenerSesion(numero);
 
-  // Cambio de modo a humano
   const frases_humano = ["quiero hablar con alguien", "atención humana", "operador", "derivame"];
   if (frases_humano.some(f => texto.includes(f))) {
     await guardarSesion(numero, { modo: 'humano' });
@@ -84,7 +83,6 @@ client.on('message', async (message) => {
     return;
   }
 
-  // Respuesta afirmativa según contexto
   if (["sí", "si", "claro", "dale", "ok"].includes(texto)) {
     if (sesion.contexto === 'consulta_programas') {
       if (sesion.area === 'incubadora') {
@@ -107,7 +105,6 @@ client.on('message', async (message) => {
     return message.reply("¿Podés indicarme a qué área te referís?");
   }
 
-  // Envío a Dialogflow
   const sessionPath = `projects/${projectId}/agent/sessions/${numero}`;
   const request = {
     session: sessionPath,
@@ -138,7 +135,7 @@ client.on('message', async (message) => {
   }
 });
 
-// Servidor Express para QR y mantener el bot activo
+// Servidor Express para ver el QR desde Fly.io
 const app = express();
 app.get('/', (_, res) => res.send('Bot activo.'));
 app.get('/qr', async (_, res) => {
@@ -146,10 +143,12 @@ app.get('/qr', async (_, res) => {
   const qrImage = await qrcode.toDataURL(latestQR);
   res.send(`<h3>Escaneá este código para activar el bot:</h3><img src="${qrImage}" />`);
 });
-const PORT = process.env.PORT || 3000;
+
+// Puerto 8080 para Fly.io
+const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => console.log(`🟢 Servidor Express activo en puerto ${PORT}`));
 
-// Inicializar cliente de WhatsApp
+// Iniciar WhatsApp
 client.initialize().catch(err => {
   console.error('❌ Error al iniciar WhatsApp Web.js:', err);
 });

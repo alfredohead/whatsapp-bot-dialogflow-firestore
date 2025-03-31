@@ -1,12 +1,10 @@
-# fly.toml app configuration file generated for asistente-whatsapp-twilight-leaf-7511 on 2025-03-31T19:14:51-03:00
+# fly.toml app configuration file generated for whatsapp-bot-dialogflow-firestore-git on 2025-03-31T19:04:15-03:00
 #
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
 
-app = 'asistente-whatsapp-twilight-leaf-7511'
+app = 'whatsapp-bot-dialogflow-firestore-git'
 primary_region = 'gru'
-
-[build]
 
 [http_service]
   internal_port = 8080
