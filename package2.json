@@ -1,0 +1,29 @@
+{
+  "name": "asistente-whatsapp",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@google-cloud/dialogflow": "^7.0.1",
+    "dialogflow": "^1.2.0",
+    "firebase-admin": "^13.2.0",
+    "qrcode-terminal": "^0.12.0",
+    "whatsapp-web.js": "^1.27.0"
+  },
+  "description": "",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alfredohead/whatsapp-bot-dialogflow-firestore.git"
+  },
+  "bugs": {
+    "url": "https://github.com/alfredohead/whatsapp-bot-dialogflow-firestore/issues"
+  },
+  "homepage": "https://github.com/alfredohead/whatsapp-bot-dialogflow-firestore#readme"
+}
+
+
