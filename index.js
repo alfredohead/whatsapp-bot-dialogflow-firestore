@@ -1,135 +1,93 @@
-const { Client, LocalAuth } = require('whatsapp-web.js');
-const qrcode = require('qrcode');
-const express = require('express');
-const dialogflow = require('@google-cloud/dialogflow');
-const admin = require('firebase-admin');
+const express = require("express");
+const { Client, LocalAuth } = require("whatsapp-web.js");
+const qrcode = require("qrcode");
+const puppeteer = require("puppeteer");
+const fs = require("fs");
+const path = require("path");
+const app = express();
+const PORT = process.env.PORT || 8080;
 
-const credentials = JSON.parse(process.env.DIALOGFLOW_JSON);
-const sessionClient = new dialogflow.SessionsClient({ credentials });
-const projectId = credentials.project_id;
-
-admin.initializeApp({
-  credential: admin.credential.cert({
-    clientEmail: credentials.client_email,
-    privateKey: credentials.private_key,
-    projectId: credentials.project_id
-  })
-});
-
-const db = admin.firestore();
-const sesionesRef = db.collection('sesiones');
-
-(async () => {
-  try {
-    await sesionesRef.doc('verificacion_test').set({ check: true });
-    await sesionesRef.doc('verificacion_test').delete();
-    console.log('✅ Firestore conectado correctamente');
-  } catch (error) {
-    console.error('❌ ERROR: No se pudo conectar a Firestore.');
-    console.error(error.message);
-    process.exit(1);
-  }
-})();
+let qrCodeDataUrl = null;
 
 const client = new Client({
   authStrategy: new LocalAuth(),
   puppeteer: {
-    args: ['--no-sandbox', '--disable-setuid-sandbox']
-  }
+    headless: true,
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-accelerated-2d-canvas",
+      "--no-first-run",
+      "--no-zygote",
+      "--single-process",
+      "--disable-gpu"
+    ],
+    executablePath: "/usr/bin/google-chrome", // asegúrate que existe en Docker
+  },
 });
 
-let latestQR = '';
-client.on('qr', (qr) => {
-  latestQR = qr;
-  console.log('⚠️ Escaneá el QR abriendo /qr en el navegador');
-});
-client.on('ready', () => console.log('✅ Asistente de WhatsApp listo'));
-
-async function obtenerSesion(numero) {
-  const doc = await sesionesRef.doc(numero).get();
-  return doc.exists ? doc.data() : { modo: 'bot' };
-}
-async function guardarSesion(numero, datos) {
-  await sesionesRef.doc(numero).set(datos);
-}
-
-client.on('message', async (message) => {
-  const numero = message.from;
-  const texto = message.body?.toLowerCase().trim();
-  if (!texto) return message.reply('No entendí tu mensaje. ¿Podés repetirlo?');
-
-  const frases_humano = [
-    "quiero hablar con alguien",
-    "necesito atención humana",
-    "puede atenderme una persona",
-    "derivame",
-    "atención humana",
-    "quiero un operador"
-  ];
-
-  const sesion = await obtenerSesion(numero);
-  if (frases_humano.some(f => texto.includes(f))) {
-    await guardarSesion(numero, { modo: 'humano' });
-    return message.reply(
-      "🧑‍💼 Te estamos derivando a un agente humano. Podés escribir tu consulta aquí.
-" +
-      "Si querés volver al asistente virtual, escribí *bot*."
-    );
-  }
-
-  if (sesion.modo === 'humano') {
-    if (texto === 'bot') {
-      await guardarSesion(numero, { modo: 'bot' });
-      return message.reply("✅ Has vuelto al asistente virtual. ¿En qué puedo ayudarte?");
-    } else {
+client.on("qr", (qr) => {
+  console.log("⚠️ Escaneá el QR desde: /qr");
+  qrcode.toDataURL(qr, (err, url) => {
+    if (err) {
+      console.error("❌ Error generando el código QR", err);
       return;
     }
-  }
+    qrCodeDataUrl = url;
+  });
+});
 
-  const sessionPath = `projects/${projectId}/agent/sessions/${numero}`;
-  const request = {
-    session: sessionPath,
-    queryInput: {
-      text: { text: texto, languageCode: 'es' }
-    }
-  };
+client.on("ready", () => {
+  console.log("✅ Cliente de WhatsApp listo");
+});
 
-  try {
-    const responses = await sessionClient.detectIntent(request);
-    const result = responses[0].queryResult;
-    const contextos = result.outputContexts.map(c => c.name.split('/').pop());
-    const area = result.parameters?.fields?.area?.stringValue || '';
-    let respuesta = result.fulfillmentText;
+client.on("auth_failure", (msg) => {
+  console.error("❌ Falló la autenticación:", msg);
+});
 
-    if (contextos.includes("consulta_programas-followup")) {
-      if (area.toLowerCase().includes("punto")) {
-        respuesta = "📚 Cursos Punto Digital: https://cursos.sanmartinmza.gob.ar";
-      } else if (area.toLowerCase().includes("economía")) {
-        respuesta = "🧶 Economía Social: economia.social@sanmartinmza.gob.ar";
-      } else if (area.toLowerCase().includes("incubadora")) {
-        respuesta = "🚀 Incubadora: elincubador@sanmartinmza.gob.ar";
-      }
-    }
+client.on("disconnected", (reason) => {
+  console.warn("🔌 Cliente desconectado:", reason);
+});
 
-    await message.reply(respuesta || "No entendí, ¿podés repetir?");
-  } catch (error) {
-    console.error('Error en Dialogflow:', error);
-    message.reply('Lo siento, algo falló. Intenta de nuevo.');
+client.on("message", async (msg) => {
+  if (msg.body === "agente") {
+    msg.reply("🧑‍💼 Te estamos derivando a un agente humano. Podés escribir tu consulta aquí.");
   }
 });
 
 client.initialize();
 
-const app = express();
-app.get('/', (_req, res) => res.send('Bot activo'));
-app.get('/qr', async (_req, res) => {
-  if (!latestQR) return res.send('QR no generado aún.');
-  try {
-    const qrImage = await qrcode.toDataURL(latestQR);
-    res.send(`<div style="text-align:center;"><h3>Escaneá el QR</h3><img src="${qrImage}" /></div>`);
-  } catch (err) {
-    res.send('Error generando QR.');
+app.get("/", (req, res) => {
+  res.send("Servidor funcionando correctamente 🚀");
+});
+
+app.get("/qr", (req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  if (qrCodeDataUrl) {
+    res.send(`
+      <html>
+        <head>
+          <title>Escaneá el QR</title>
+          <meta http-equiv="refresh" content="10">
+          <style>
+            body { font-family: sans-serif; text-align: center; margin-top: 50px; }
+            img { width: 300px; height: 300px; }
+          </style>
+        </head>
+        <body>
+          <h1>Escaneá el QR para iniciar sesión</h1>
+          <img src="${qrCodeDataUrl}" alt="Código QR" />
+          <p>La página se actualiza cada 10 segundos.</p>
+        </body>
+      </html>
+    `);
+  } else {
+    res.send("QR no disponible todavía. Intentá de nuevo en unos segundos.");
   }
 });
-const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => console.log(`Servidor Express corriendo en el puerto ${PORT}`));
+
+app.listen(PORT, () => {
+  console.log(`🚀 Servidor Express corriendo en el puerto ${PORT}`);
+});
+
