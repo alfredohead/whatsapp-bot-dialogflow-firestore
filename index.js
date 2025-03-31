@@ -1,81 +1,106 @@
-
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
-const dialogflow = require('@google-cloud/dialogflow');
-const uuid = require('uuid');
+const express = require('express');
+const { SessionsClient } = require('@google-cloud/dialogflow');
+const { initializeApp, applicationDefault } = require('firebase-admin/app');
+const { getFirestore } = require('firebase-admin/firestore');
+const fs = require('fs');
 
-// Inicializar el cliente de WhatsApp
-const client = new Client({
-    authStrategy: new LocalAuth(),
-    puppeteer: {
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
-    }
+// Inicializar Firebase
+initializeApp({
+  credential: applicationDefault()
 });
 
-let sessions = new Map();
-const projectId = process.env.DIALOGFLOW_PROJECT_ID;
-const sessionClient = new dialogflow.SessionsClient({
-    credentials: JSON.parse(process.env.DIALOGFLOW_JSON)
+const db = getFirestore();
+
+// Inicializar Dialogflow
+const dialogflowClient = new SessionsClient({
+  projectId: 'asistentedependencia-mwqx'
+});
+
+// Mapa para controlar si un usuario está con humano o bot
+const userStates = {};
+
+const client = new Client({
+  authStrategy: new LocalAuth()
 });
 
 client.on('qr', (qr) => {
-    qrcode.generate(qr, { small: true });
+  qrcode.generate(qr, { small: true });
 });
 
 client.on('ready', () => {
-    console.log('🤖 Bot is ready!');
+  console.log('✅ Cliente de WhatsApp listo');
 });
 
 client.on('message', async (message) => {
-    const chat = await message.getChat();
-    const userId = message.from;
+  const userId = message.from;
+  const text = message.body.toLowerCase().trim();
 
-    if (!sessions.has(userId)) {
-        sessions.set(userId, {
-            sessionId: uuid.v4(),
-            human: false
-        });
+  // Volver al bot si el usuario escribe 'bot'
+  if (text === 'bot') {
+    userStates[userId] = 'bot';
+    return await message.reply('🤖 Has vuelto al bot. ¿En qué puedo ayudarte?');
+  }
+
+  // Si el usuario está con un humano, ignorar mensajes
+  if (userStates[userId] === 'human') return;
+
+  // Procesar mensaje con Dialogflow
+  const sessionPath = dialogflowClient.projectAgentSessionPath(
+    'asistentedependencia-mwqx',
+    userId
+  );
+
+  const request = {
+    session: sessionPath,
+    queryInput: {
+      text: {
+        text: message.body,
+        languageCode: 'es'
+      }
+    }
+  };
+
+  try {
+    const responses = await dialogflowClient.detectIntent(request);
+    const result = responses[0].queryResult;
+
+    const replyText = result.fulfillmentText;
+
+    // Si se deriva a un humano
+    if (replyText.toLowerCase().includes('derivando a un agente humano')) {
+      userStates[userId] = 'human';
+      await message.reply("🧑‍💼 Te estamos derivando a un agente humano. Podés escribir tu consulta aquí.");
+      return;
     }
 
-    const session = sessions.get(userId);
+    await message.reply(replyText);
 
-    if (message.body.toLowerCase() === 'bot') {
-        session.human = false;
-        await message.reply('🤖 Has vuelto a hablar con el bot.');
-        return;
-    }
+    // Guardar mensaje en Firestore
+    await db.collection('mensajes').add({
+      from: userId,
+      text: message.body,
+      response: replyText,
+      timestamp: new Date()
+    });
 
-    if (session.human) {
-        return;
-    }
+  } catch (error) {
+    console.error('Error al procesar el mensaje:', error);
+    await message.reply('❌ Ocurrió un error procesando tu mensaje.');
+  }
+});
 
-    if (message.body.toLowerCase().includes('operador') || message.body.toLowerCase().includes('humano')) {
-        session.human = true;
-        await message.reply("🧑‍💼 Te estamos derivando a un agente humano. Podés escribir tu consulta aquí.");
-        return;
-    }
+// Servidor para Fly.io
+const app = express();
+const PORT = process.env.PORT || 8080;
 
-    try {
-        const sessionPath = sessionClient.projectAgentSessionPath(projectId, session.sessionId);
+app.get('/', (req, res) => {
+  res.send('Bot activo 🚀');
+});
 
-        const request = {
-            session: sessionPath,
-            queryInput: {
-                text: {
-                    text: message.body,
-                    languageCode: 'es',
-                },
-            },
-        };
-
-        const responses = await sessionClient.detectIntent(request);
-        const result = responses[0].queryResult;
-
-        await message.reply(result.fulfillmentText);
-    } catch (err) {
-        console.error('Dialogflow error:', err);
-        await message.reply('⚠️ Ocurrió un error al procesar tu mensaje.');
-    }
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Servidor escuchando en http://0.0.0.0:${PORT}`);
 });
 
 client.initialize();
