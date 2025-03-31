@@ -2,105 +2,98 @@ const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 const express = require('express');
 const { SessionsClient } = require('@google-cloud/dialogflow');
-const { initializeApp, applicationDefault } = require('firebase-admin/app');
-const { getFirestore } = require('firebase-admin/firestore');
-const fs = require('fs');
+const { Firestore } = require('@google-cloud/firestore');
 
-// Inicializar Firebase
-initializeApp({
-  credential: applicationDefault()
+// Configuración
+const projectId = 'asistentedependencia-mwqx';
+const sessionClient = new SessionsClient({
+  credentials: JSON.parse(process.env.DIALOGFLOW_JSON)
 });
+const firestore = new Firestore();
 
-const db = getFirestore();
+const app = express();
+const PORT = process.env.PORT || 8080;
 
-// Inicializar Dialogflow
-const dialogflowClient = new SessionsClient({
-  projectId: 'asistentedependencia-mwqx'
-});
-
-// Mapa para controlar si un usuario está con humano o bot
-const userStates = {};
-
+// WhatsApp client
 const client = new Client({
-  authStrategy: new LocalAuth()
+  authStrategy: new LocalAuth(),
+  puppeteer: {
+    args: ['--no-sandbox', '--disable-setuid-sandbox']
+  }
 });
 
-client.on('qr', (qr) => {
+client.on('qr', qr => {
   qrcode.generate(qr, { small: true });
 });
 
 client.on('ready', () => {
-  console.log('✅ Cliente de WhatsApp listo');
+  console.log('✅ Bot de WhatsApp listo');
 });
 
-client.on('message', async (message) => {
-  const userId = message.from;
-  const text = message.body.toLowerCase().trim();
+// Estados de usuarios
+const userStates = new Map(); // phone => 'bot' | 'human'
 
-  // Volver al bot si el usuario escribe 'bot'
-  if (text === 'bot') {
-    userStates[userId] = 'bot';
-    return await message.reply('🤖 Has vuelto al bot. ¿En qué puedo ayudarte?');
+client.on('message', async message => {
+  const userId = message.from;
+
+  // Si usuario pide volver al bot
+  if (message.body.toLowerCase() === 'bot') {
+    userStates.set(userId, 'bot');
+    return await message.reply('🤖 ¡Has vuelto a hablar con el bot!');
   }
 
-  // Si el usuario está con un humano, ignorar mensajes
-  if (userStates[userId] === 'human') return;
+  const currentState = userStates.get(userId) || 'bot';
 
-  // Procesar mensaje con Dialogflow
-  const sessionPath = dialogflowClient.projectAgentSessionPath(
-    'asistentedependencia-mwqx',
-    userId
+  if (currentState === 'human') {
+    return; // No responder si está con humano
+  }
+
+  // Detectar si debe derivar a humano
+  const triggerWords = ['humano', 'persona', 'asesor', 'agente'];
+  const shouldDerive = triggerWords.some(word =>
+    message.body.toLowerCase().includes(word)
   );
+
+  if (shouldDerive) {
+    userStates.set(userId, 'human');
+    return await message.reply(
+      '🧑‍💼 Te estamos derivando a un agente humano. Podés escribir tu consulta aquí. Escribí *bot* para volver a hablar conmigo.'
+    );
+  }
+
+  // Enviar mensaje a Dialogflow
+  const sessionPath = sessionClient.projectAgentSessionPath(projectId, userId);
 
   const request = {
     session: sessionPath,
     queryInput: {
       text: {
         text: message.body,
-        languageCode: 'es'
+        languageCode: 'es',
       }
     }
   };
 
   try {
-    const responses = await dialogflowClient.detectIntent(request);
+    const responses = await sessionClient.detectIntent(request);
     const result = responses[0].queryResult;
+    const reply = result.fulfillmentText;
 
-    const replyText = result.fulfillmentText;
-
-    // Si se deriva a un humano
-    if (replyText.toLowerCase().includes('derivando a un agente humano')) {
-      userStates[userId] = 'human';
-      await message.reply("🧑‍💼 Te estamos derivando a un agente humano. Podés escribir tu consulta aquí.");
-      return;
-    }
-
-    await message.reply(replyText);
-
-    // Guardar mensaje en Firestore
-    await db.collection('mensajes').add({
-      from: userId,
-      text: message.body,
-      response: replyText,
-      timestamp: new Date()
-    });
-
-  } catch (error) {
-    console.error('Error al procesar el mensaje:', error);
-    await message.reply('❌ Ocurrió un error procesando tu mensaje.');
+    await message.reply(reply || 'Lo siento, no entendí eso.');
+  } catch (err) {
+    console.error('Error con Dialogflow:', err);
+    await message.reply('⚠️ Ocurrió un error al procesar tu mensaje.');
   }
 });
 
-// Servidor para Fly.io
-const app = express();
-const PORT = process.env.PORT || 8080;
+// Iniciar WhatsApp y servidor
+client.initialize();
 
 app.get('/', (req, res) => {
-  res.send('Bot activo 🚀');
+  res.send('🟢 Bot de WhatsApp corriendo en Fly.io');
 });
 
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Servidor escuchando en http://0.0.0.0:${PORT}`);
+  console.log(`🌐 Servidor Express escuchando en http://0.0.0.0:${PORT}`);
 });
 
-client.initialize();

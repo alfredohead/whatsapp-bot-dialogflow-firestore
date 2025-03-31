@@ -1,19 +1,21 @@
-FROM browserless/chrome:latest
+# Imagen base de Node.js
+FROM node:18
 
 # Crear directorio de trabajo
 WORKDIR /app
 
-# Copiar solo package.json para evitar errores de permisos
+# Copiar archivos necesarios
 COPY package.json ./
+COPY package-lock.json ./
 
-# Instalar dependencias de producción (sin lockfile)
-RUN npm install --omit=dev
+# Instalar dependencias
+RUN npm install
 
-# Copiar el resto del proyecto
+# Copiar el resto de archivos
 COPY . .
 
-# Exponer el puerto usado por la app
+# Exponer el puerto que Fly.io espera
 EXPOSE 8080
 
-# Iniciar la app
+# Comando para iniciar la app
 CMD ["npm", "start"]
