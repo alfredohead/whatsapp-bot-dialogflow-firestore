@@ -1,87 +1,81 @@
-const express = require("express");
-const { Client, LocalAuth } = require("whatsapp-web.js");
-const qrcode = require("qrcode");
-const dialogflow = require("@google-cloud/dialogflow");
-const fs = require("fs");
-const { Firestore } = require("@google-cloud/firestore");
 
-// Express setup
-const app = express();
-const PORT = process.env.PORT || 8080;
+const { Client, LocalAuth } = require('whatsapp-web.js');
+const qrcode = require('qrcode-terminal');
+const dialogflow = require('@google-cloud/dialogflow');
+const uuid = require('uuid');
 
-app.get("/", (req, res) => {
-  res.send("Servidor funcionando correctamente 🚀");
-});
-
-// QR endpoint
-let qrCodeImage = "";
-app.get("/qr", (req, res) => {
-  if (qrCodeImage) {
-    res.send(`<img src="${qrCodeImage}" />`);
-  } else {
-    res.send("QR no generado todavía.");
-  }
-});
-
-// Firestore setup
-const firestore = new Firestore();
-console.log("✅ Firestore conectado correctamente");
-
-// Dialogflow setup
-const sessionClient = new dialogflow.SessionsClient({
-  keyFilename: "./credenciales-dialogflow.json", // Ajustar según tu proyecto
-});
-const projectId = (await sessionClient.getProjectId());
-
-// WhatsApp client setup
+// Inicializar el cliente de WhatsApp
 const client = new Client({
-  authStrategy: new LocalAuth(),
-  puppeteer: {
-    args: ["--no-sandbox", "--disable-setuid-sandbox"],
-  },
-});
-
-client.on("qr", (qr) => {
-  qrcode.toDataURL(qr, (err, url) => {
-    qrCodeImage = url;
-    console.log("⚠️ Escaneá el QR desde: /qr");
-  });
-});
-
-client.on("ready", () => {
-  console.log("✅ WhatsApp Web conectado");
-});
-
-client.on("message", async (message) => {
-  if (!message.body) return;
-
-  const sessionPath = sessionClient.projectAgentSessionPath(projectId, message.from);
-  const request = {
-    session: sessionPath,
-    queryInput: {
-      text: {
-        text: message.body,
-        languageCode: "es",
-      },
-    },
-  };
-
-  try {
-    const responses = await sessionClient.detectIntent(request);
-    const result = responses[0].queryResult;
-    if (result && result.fulfillmentText) {
-      await message.reply(result.fulfillmentText);
+    authStrategy: new LocalAuth(),
+    puppeteer: {
+        args: ['--no-sandbox', '--disable-setuid-sandbox']
     }
-  } catch (error) {
-    console.error("🛑 Error con Dialogflow:", error);
-    await message.reply("Ocurrió un error al procesar tu mensaje.");
-  }
+});
+
+let sessions = new Map();
+const projectId = process.env.DIALOGFLOW_PROJECT_ID;
+const sessionClient = new dialogflow.SessionsClient({
+    credentials: JSON.parse(process.env.DIALOGFLOW_JSON)
+});
+
+client.on('qr', (qr) => {
+    qrcode.generate(qr, { small: true });
+});
+
+client.on('ready', () => {
+    console.log('🤖 Bot is ready!');
+});
+
+client.on('message', async (message) => {
+    const chat = await message.getChat();
+    const userId = message.from;
+
+    if (!sessions.has(userId)) {
+        sessions.set(userId, {
+            sessionId: uuid.v4(),
+            human: false
+        });
+    }
+
+    const session = sessions.get(userId);
+
+    if (message.body.toLowerCase() === 'bot') {
+        session.human = false;
+        await message.reply('🤖 Has vuelto a hablar con el bot.');
+        return;
+    }
+
+    if (session.human) {
+        return;
+    }
+
+    if (message.body.toLowerCase().includes('operador') || message.body.toLowerCase().includes('humano')) {
+        session.human = true;
+        await message.reply("🧑‍💼 Te estamos derivando a un agente humano. Podés escribir tu consulta aquí.");
+        return;
+    }
+
+    try {
+        const sessionPath = sessionClient.projectAgentSessionPath(projectId, session.sessionId);
+
+        const request = {
+            session: sessionPath,
+            queryInput: {
+                text: {
+                    text: message.body,
+                    languageCode: 'es',
+                },
+            },
+        };
+
+        const responses = await sessionClient.detectIntent(request);
+        const result = responses[0].queryResult;
+
+        await message.reply(result.fulfillmentText);
+    } catch (err) {
+        console.error('Dialogflow error:', err);
+        await message.reply('⚠️ Ocurrió un error al procesar tu mensaje.');
+    }
 });
 
 client.initialize();
-
-// Iniciar Express
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`🚀 Servidor Express corriendo en el puerto ${PORT}`);
-});
-
