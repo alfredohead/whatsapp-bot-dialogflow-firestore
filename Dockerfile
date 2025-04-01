@@ -1,21 +1,13 @@
-# Imagen base de Node.js
-FROM node:18
+FROM node:20-slim
 
-# Crear directorio de trabajo
 WORKDIR /app
 
-# Copiar archivos necesarios
-COPY package.json ./
-COPY package-lock.json ./
+COPY package*.json ./
+RUN npm install --production
 
-# Instalar dependencias
-RUN npm install
-
-# Copiar el resto de archivos
 COPY . .
 
-# Exponer el puerto que Fly.io espera
-EXPOSE 8080
+EXPOSE 3000
+ENV NODE_ENV=production
 
-# Comando para iniciar la app
-CMD ["npm", "start"]
+CMD ["node", "index.js"]
