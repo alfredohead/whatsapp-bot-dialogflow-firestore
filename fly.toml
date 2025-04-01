@@ -1,4 +1,4 @@
-app = "whatsapp-bot"
+app = "whatsapp-bot-asistente-wandering-brook-4491"
 
 [env]
   NODE_ENV = "production"
