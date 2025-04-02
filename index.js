@@ -10,7 +10,7 @@ const { getFirestore } = require('firebase-admin/firestore');
 // 🔐 Credenciales Firebase
 let firebaseCredentials;
 if (process.env.FIREBASE_JSON) {
-  firebaseCredentials = JSON.parse(process.env.FIREBASE_JSON);
+  firebaseCredentials = JSON.parse(Buffer.from(process.env.FIREBASE_JSON, 'base64').toString('utf8'));
 } else if (fs.existsSync('./credentials/firebase.json')) {
   firebaseCredentials = require('./credentials/firebase.json');
 } else {
@@ -21,7 +21,7 @@ if (process.env.FIREBASE_JSON) {
 // 🔐 Credenciales Dialogflow
 let dialogflowCredentials;
 if (process.env.DIALOGFLOW_JSON) {
-  dialogflowCredentials = JSON.parse(process.env.DIALOGFLOW_JSON);
+  dialogflowCredentials = JSON.parse(Buffer.from(process.env.DIALOGFLOW_JSON, 'base64').toString('utf8'));
 } else if (fs.existsSync('./credentials/dialogflow.json')) {
   dialogflowCredentials = require('./credentials/dialogflow.json');
 } else {
