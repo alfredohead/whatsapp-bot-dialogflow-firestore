@@ -1,22 +1,18 @@
-# fly.toml app configuration file generated for asistente-whatsapp-twilight-leaf-7511 on 2025-03-31T19:14:51-03:00
-#
-# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
-#
+app = "asistente-whatsapp"
+kill_signal = "SIGINT"
+kill_timeout = 5
 
-app = 'asistente-whatsapp-twilight-leaf-7511'
-primary_region = 'gru'
+[env]
+  PORT = "8080"
 
-[build]
-
-[http_service]
+[[services]]
   internal_port = 8080
-  force_https = true
-  auto_stop_machines = 'stop'
-  auto_start_machines = true
-  min_machines_running = 0
-  processes = ['app']
+  protocol = "tcp"
 
-[[vm]]
-  memory = '1gb'
-  cpu_kind = 'shared'
-  cpus = 1
+  [[services.ports]]
+    port = 80
+    handlers = ["http"]
+
+  [[services.ports]]
+    port = 443
+    handlers = ["tls", "http"]

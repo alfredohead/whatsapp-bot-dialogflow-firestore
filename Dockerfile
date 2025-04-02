@@ -1,21 +1,31 @@
-# Imagen base de Node.js
-FROM node:18
+FROM node:18-alpine
+
+# Instalar dependencias necesarias para Puppeteer y Chromium
+RUN apk add --no-cache \
+    chromium \
+    nss \
+    freetype \
+    harfbuzz \
+    ca-certificates \
+    ttf-freefont \
+    dumb-init
+
+# Definir la ruta del ejecutable de Chromium para Puppeteer
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 
 # Crear directorio de trabajo
 WORKDIR /app
 
-# Copiar archivos necesarios
+# Copiar e instalar dependencias del proyecto
 COPY package.json ./
-COPY package-lock.json ./
-
-# Instalar dependencias
 RUN npm install
 
-# Copiar el resto de archivos
+# Copiar el resto del proyecto
 COPY . .
 
-# Exponer el puerto que Fly.io espera
+# Exponer el puerto del servidor Express
 EXPOSE 8080
 
-# Comando para iniciar la app
-CMD ["npm", "start"]
+# Ejecutar la app con manejo adecuado de procesos
+CMD ["dumb-init", "npm", "start"]
+
