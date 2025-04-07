@@ -1,31 +1,48 @@
-FROM node:18-alpine
+# Dockerfile
+FROM node:18
 
-# Instalar dependencias necesarias para Puppeteer y Chromium
-RUN apk add --no-cache \
-    chromium \
-    nss \
-    freetype \
-    harfbuzz \
-    ca-certificates \
-    ttf-freefont \
-    dumb-init
+# Instalar dependencias para Chromium
+RUN apt-get update && apt-get install -y \
+    wget \
+    curl \
+    gnupg \
+    unzip \
+    fonts-liberation \
+    libappindicator3-1 \
+    libasound2 \
+    libatk-bridge2.0-0 \
+    libatk1.0-0 \
+    libcups2 \
+    libdbus-1-3 \
+    libgdk-pixbuf2.0-0 \
+    libnspr4 \
+    libnss3 \
+    libx11-xcb1 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxrandr2 \
+    libxss1 \
+    libxtst6 \
+    xdg-utils \
+    libdrm2 \
+    libgbm1 \
+    libxshmfence1 \
+    --no-install-recommends && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
-# Definir la ruta del ejecutable de Chromium para Puppeteer
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
-
-# Crear directorio de trabajo
+# Crear carpeta de trabajo
 WORKDIR /app
 
-# Copiar e instalar dependencias del proyecto
-COPY package.json ./
-RUN npm install
-
-# Copiar el resto del proyecto
+# Copiar archivos de proyecto
 COPY . .
 
-# Exponer el puerto del servidor Express
+# Instalar dependencias del proyecto
+RUN npm install
+
+# Exponer el puerto
 EXPOSE 8080
 
-# Ejecutar la app con manejo adecuado de procesos
-CMD ["dumb-init", "npm", "start"]
+# Iniciar app
+CMD ["npm", "start"]
 
