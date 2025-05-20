@@ -1,20 +1,37 @@
 app = "asistente-whatsapp"
 primary_region = "gru"
 
+# Construye con tu Dockerfile o imagen por defecto
 [build]
+  # Asumiendo que usas tu propio Dockerfile:
+  # dockerfile = "Dockerfile"
 
-[http_service]
-  internal_port = 8080
-  force_https = true
-  auto_stop_machines = true
-  auto_start_machines = true
-  min_machines_running = 1
-  processes = ["app"]
-
-[[mounts]]
-  source = "whatsapp_data"
-  destination = "/app/whatsapp-sessions"
-  initial_size = "1GB"
-
+# Variables de entorno necesarias
 [env]
-  PORT = "8080"
+  PORT = "3000"
+  # Proyecto de Google Cloud
+  GOOGLE_PROJECT_ID = "asistentedependencia-mwqx"
+  # Tu clave de OpenAI y JSON de Firebase subidos como secretos
+  OPENAI_API_KEY = "{{ env.OPENAI_API_KEY }}"
+  FIREBASE_JSON     = "{{ env.FIREBASE_JSON }}"
+  # Ruta opcional si necesitas override de Puppeteer
+  PUPPETEER_EXECUTABLE_PATH = "/usr/bin/chromium-browser"
+
+# Monta el volumen para la sesión de WhatsApp
+[[mounts]]
+  source      = "whatsapp_data"
+  destination = "/app/session"
+
+# Servicio HTTP expuesto
+[[services]]
+  http_checks = []
+  internal_port = 3000
+  protocol = "tcp"
+
+  [[services.ports]]
+    port = 80
+    handlers = ["http"]
+
+  [[services.ports]]
+    port = 443
+    handlers = ["tls", "http"]
