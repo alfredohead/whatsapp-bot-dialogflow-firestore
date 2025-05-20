@@ -13,7 +13,7 @@ import { WebhookClient } from 'dialogflow-fulfillment';
 import { SessionsClient } from '@google-cloud/dialogflow';
 import { initializeApp, cert } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
-import { Configuration, OpenAIApi } from 'openai';
+import OpenAI from 'openai';
 
 // 🔐 Cargar credenciales de Firebase
 let firebaseCredentials;
@@ -35,7 +35,7 @@ const projectId = process.env.GOOGLE_PROJECT_ID;
 const dfClient = new SessionsClient();
 
 // Configuración de OpenAI
-const openai = new OpenAIApi(new Configuration({ apiKey: process.env.OPENAI_API_KEY }));
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 // Inicialización de cliente de WhatsApp
 const whatsappClient = new Client({
@@ -75,14 +75,14 @@ whatsappClient.on('message', async msg => {
     let reply = queryResult.fulfillmentText;
     if (!reply) {
       console.log(chalk.magenta('🤖 [OpenAI]') + ' ChatGPT fallback');
-      const chatRes = await openai.createChatCompletion({
+      const chatRes = await openai.chat.completions.create({
         model: 'gpt-3.5-turbo',
         messages: [
           { role: 'system', content: 'Eres un asistente conversacional útil.' },
           { role: 'user', content: msg.body }
         ]
       });
-      reply = chatRes.data.choices[0].message.content.trim();
+      reply = chatRes.choices[0].message.content.trim();
     }
 
     // 4) Enviar respuesta
@@ -121,7 +121,6 @@ app.post('/dialogflow-webhook', (req, res) => {
   const intentMap = new Map();
   intentMap.set('Default Welcome Intent', welcome);
   intentMap.set('Default Fallback Intent', fallback);
-  // TODO: agrega más mappings según tus intents
 
   agent.handleRequest(intentMap);
 });
