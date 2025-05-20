@@ -4,7 +4,6 @@
 import 'dotenv/config';
 import pkg from 'whatsapp-web.js';
 const { Client, LocalAuth } = pkg;
-import { Client, LocalAuth } from 'whatsapp-web.js';
 import express from 'express';
 import qrcode from 'qrcode-terminal';
 import fs from 'fs';
@@ -40,6 +39,10 @@ const dfClient = new SessionsClient();
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 // Inicialización de cliente de WhatsApp
+enhancedClientInit: (() => {
+  // Desestructuramos Client y LocalAuth correctamente desde pkg
+enhancedClientInit: (() => { // placeholder to illustrate
+})();
 const whatsappClient = new Client({
   authStrategy: new LocalAuth({ clientId: 'bot' }),
   puppeteer: { headless: true }
