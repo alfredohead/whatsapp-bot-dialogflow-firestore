@@ -6,7 +6,6 @@ import cors from 'cors';
 import chalk from 'chalk';
 import qrcode from 'qrcode-terminal';
 import fs from 'fs';
-import path from 'path';
 import { WebhookClient } from 'dialogflow-fulfillment';
 import { SessionsClient } from '@google-cloud/dialogflow';
 import { initializeApp, cert } from 'firebase-admin/app';
@@ -17,24 +16,19 @@ import whatsappWeb from 'whatsapp-web.js';
 const { Client, LocalAuth } = whatsappWeb;
 
 // ——————————————————————————————————————
-// 1. Carga de credenciales de servicio
+// 1. Carga de credenciales de Firebase (desde env FIREBASE_JSON)
 // ——————————————————————————————————————
 const firebaseCredentials = process.env.FIREBASE_JSON
-  ? JSON.parse(
-      Buffer.from(process.env.FIREBASE_JSON, 'base64').toString('utf8')
-    )
+  ? JSON.parse(Buffer.from(process.env.FIREBASE_JSON, 'base64').toString('utf8'))
   : JSON.parse(fs.readFileSync('./serviceAccount.json', 'utf8'));
 
-// Inicializa Firebase
 initializeApp({ credential: cert(firebaseCredentials) });
 const firestore = getFirestore();
 
-// Project ID de GCP
+// ——————————————————————————————————————
+// 2. Dialogflow con credenciales explícitas
+// ——————————————————————————————————————
 const projectId = process.env.GOOGLE_PROJECT_ID;
-
-// ——————————————————————————————————————
-// 2. Cliente de Dialogflow con credenciales explícitas
-// ——————————————————————————————————————
 const dfClient = new SessionsClient({
   projectId,
   credentials: {
@@ -44,17 +38,17 @@ const dfClient = new SessionsClient({
 });
 
 // ——————————————————————————————————————
-// 3. Cliente de OpenAI
+// 3. OpenAI
 // ——————————————————————————————————————
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 // ——————————————————————————————————————
-// 4. Cliente de WhatsApp
+// 4. WhatsApp-Web.js y persistencia de sesión
 // ——————————————————————————————————————
 const whatsappClient = new Client({
   authStrategy: new LocalAuth({
     clientId: 'bot',
-    dataPath: '/app/session' // montado desde el volumen "whatsapp_data"
+    dataPath: '/app/session'   // Debe coincidir con fly.toml destination
   }),
   puppeteer: {
     headless: true,
@@ -70,7 +64,7 @@ const whatsappClient = new Client({
 });
 
 // ——————————————————————————————————————
-// 5. Handlers de eventos de WhatsApp
+// 5. Handlers de WhatsApp
 // ——————————————————————————————————————
 whatsappClient.on('qr', qr => {
   console.log(chalk.blue('🔍 [QR]') + ' Generating QR code:');
@@ -84,17 +78,15 @@ whatsappClient.on('ready', () =>
 whatsappClient.on('message', async msg => {
   console.log(chalk.yellow('📥 [Message]'), msg.from, '-', msg.body);
   try {
-    // Llamada a Dialogflow
+    // Detecta intent en Dialogflow
     const sessionPath = dfClient.projectAgentSessionPath(projectId, msg.from);
     const [response] = await dfClient.detectIntent({
       session: sessionPath,
-      queryInput: {
-        text: { text: msg.body, languageCode: 'es' }
-      }
+      queryInput: { text: { text: msg.body, languageCode: 'es' } }
     });
     const result = response.queryResult;
 
-    // Almacena en Firestore
+    // Guarda en Firestore
     await firestore.collection('messages').add({
       from: msg.from,
       text: msg.body,
@@ -102,20 +94,19 @@ whatsappClient.on('message', async msg => {
       timestamp: new Date()
     });
 
-    // Obtiene respuesta de Dialogflow o fallback a OpenAI
+    // Genera respuesta (Dialogflow o fallback OpenAI)
     let reply = result.fulfillmentText;
     if (!reply) {
-      const chat = await openai.chat.completions.create({
+      const chatRes = await openai.chat.completions.create({
         model: 'gpt-3.5-turbo',
         messages: [
           { role: 'system', content: 'Eres un asistente conversacional útil.' },
           { role: 'user', content: msg.body }
         ]
       });
-      reply = chat.choices[0].message.content.trim();
+      reply = chatRes.choices[0].message.content.trim();
     }
 
-    // Envía el mensaje de vuelta
     await whatsappClient.sendMessage(msg.from, reply);
     console.log(chalk.magenta('📤 [Sent]'), reply);
   } catch (err) {
@@ -124,7 +115,7 @@ whatsappClient.on('message', async msg => {
 });
 
 // ——————————————————————————————————————
-// 6. Configuración de Express
+// 6. Servidor HTTP con Express
 // ——————————————————————————————————————
 const app = express();
 app.use(compression());
@@ -135,20 +126,18 @@ app.get('/healthz', (_req, res) => res.send('OK'));
 
 app.post('/dialogflow-webhook', (req, res) => {
   const agent = new WebhookClient({ request: req, response: res });
-  const map = new Map([
+  const intentMap = new Map([
     ['Default Welcome Intent', a => a.add('¡Hola! ¿En qué puedo ayudarte?')],
     ['Default Fallback Intent', a =>
       a.add('Lo siento, no entendí. ¿Podrías reformularlo?')
     ]
   ]);
-  agent.handleRequest(map);
+  agent.handleRequest(intentMap);
 });
 
 app.post('/send', async (req, res) => {
   const { numero, mensaje } = req.body;
-  if (!numero || !mensaje) {
-    return res.status(400).json({ error: 'Missing parameters' });
-  }
+  if (!numero || !mensaje) return res.status(400).json({ error: 'Missing parameters' });
   try {
     await whatsappClient.sendMessage(`${numero}@c.us`, mensaje);
     res.json({ success: true });
