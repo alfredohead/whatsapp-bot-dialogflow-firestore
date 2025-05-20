@@ -15,4 +15,8 @@ whatsapp-sessions/
 Thumbs.db
 
 # Fly.io
+<<<<<<< HEAD
 .fly/
+=======
+.fly/
+>>>>>>> bc1419f0a286a8aa50ce53123e5ece4be9ae893d
