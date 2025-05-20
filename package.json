@@ -13,6 +13,7 @@
     "dotenv": "^16.0.3",
     "express": "^4.21.2",
     "firebase-admin": "^13.2.0",
+    "openai": "^4.100.0",
     "puppeteer": "^24.5.0",
     "qrcode": "^1.5.4",
     "qrcode-terminal": "^0.12.0",
