@@ -1,16 +1,19 @@
-const { Client, LocalAuth } = require('whatsapp-web.js');
-const express = require('express');
-const qrcode = require('qrcode-terminal');
-const fs = require('fs');
-const compression = require('compression');
-const cors = require('cors');
-const chalk = require('chalk');
-const { WebhookClient } = require('dialogflow-fulfillment');
-const { SessionsClient } = require('@google-cloud/dialogflow');
-const { initializeApp, cert } = require('firebase-admin/app');
-const { getFirestore } = require('firebase-admin/firestore');
-const { Configuration, OpenAIApi } = require('openai');
-require('dotenv').config();
+// index.js
+// Asegúrate de tener "type": "module" en tu package.json
+
+import 'dotenv/config';
+import { Client, LocalAuth } from 'whatsapp-web.js';
+import express from 'express';
+import qrcode from 'qrcode-terminal';
+import fs from 'fs';
+import compression from 'compression';
+import cors from 'cors';
+import chalk from 'chalk';
+import { WebhookClient } from 'dialogflow-fulfillment';
+import { SessionsClient } from '@google-cloud/dialogflow';
+import { initializeApp, cert } from 'firebase-admin/app';
+import { getFirestore } from 'firebase-admin/firestore';
+import { Configuration, OpenAIApi } from 'openai';
 
 // 🔐 Cargar credenciales de Firebase
 let firebaseCredentials;
@@ -19,7 +22,7 @@ if (process.env.FIREBASE_JSON) {
     Buffer.from(process.env.FIREBASE_JSON, 'base64').toString('utf8')
   );
 } else if (fs.existsSync('./serviceAccount.json')) {
-  firebaseCredentials = require('./serviceAccount.json');
+  firebaseCredentials = JSON.parse(fs.readFileSync('./serviceAccount.json', 'utf8'));
 } else {
   console.error(chalk.red('❌ [Error] No se encontraron credenciales de Firebase'));
   process.exit(1);
@@ -32,8 +35,7 @@ const projectId = process.env.GOOGLE_PROJECT_ID;
 const dfClient = new SessionsClient();
 
 // Configuración de OpenAI
-const openaiConfig = new Configuration({ apiKey: process.env.OPENAI_API_KEY });
-const openai = new OpenAIApi(openaiConfig);
+const openai = new OpenAIApi(new Configuration({ apiKey: process.env.OPENAI_API_KEY }));
 
 // Inicialización de cliente de WhatsApp
 const whatsappClient = new Client({
@@ -48,30 +50,31 @@ whatsappClient.on('qr', qr => {
 });
 whatsappClient.on('ready', () => console.log(chalk.green('✅ [WhatsApp] Cliente listo')));
 
-// Manejo de mensajes
+// Manejo de mensajes entrantes
 whatsappClient.on('message', async msg => {
   console.log(chalk.yellow('📥 [Mensaje recibido]'), msg.from, '-', msg.body);
   try {
-    // Procesamiento en Dialogflow
+    // 1) Procesar en Dialogflow
     const sessionPath = dfClient.projectAgentSessionPath(projectId, msg.from);
-    const dfReq = {
+    const dfResponse = await dfClient.detectIntent({
       session: sessionPath,
       queryInput: { text: { text: msg.body, languageCode: 'es' } }
-    };
-    const dfRes = await dfClient.detectIntent(dfReq);
-    const dfResult = dfRes[0].queryResult;
-    console.log(chalk.cyan('💾 [Firestore]') + ' Guardando mensaje');
+    });
+    const queryResult = dfResponse[0].queryResult;
+
+    // 2) Guardar en Firestore
     await firestore.collection('messages').add({
       from: msg.from,
       text: msg.body,
-      intent: dfResult.intent.displayName || 'Desconocido',
+      intent: queryResult.intent?.displayName || 'Desconocido',
       timestamp: new Date()
     });
+    console.log(chalk.cyan('💾 [Firestore]') + ' Mensaje guardado con intent:', queryResult.intent?.displayName);
 
-    // Obtener respuesta de Dialogflow o fallback a OpenAI
-    let reply = dfResult.fulfillmentText;
+    // 3) Obtener respuesta: Dialogflow o OpenAI fallback
+    let reply = queryResult.fulfillmentText;
     if (!reply) {
-      console.log(chalk.magenta('🤖 [OpenAI] Llamada a ChatGPT como fallback'));
+      console.log(chalk.magenta('🤖 [OpenAI]') + ' ChatGPT fallback');
       const chatRes = await openai.createChatCompletion({
         model: 'gpt-3.5-turbo',
         messages: [
@@ -82,17 +85,20 @@ whatsappClient.on('message', async msg => {
       reply = chatRes.data.choices[0].message.content.trim();
     }
 
+    // 4) Enviar respuesta
     await whatsappClient.sendMessage(msg.from, reply);
     console.log(chalk.magenta('📤 [Respuesta enviada]'), reply);
-  } catch (err) {
-    console.error(chalk.red('❌ [Error procesando mensaje]'), err);
+  } catch (error) {
+    console.error(chalk.red('❌ [Error procesando mensaje]'), error);
   }
 });
+
 whatsappClient.initialize();
 
-// Express app
+// --- Express HTTP Server ---
 const app = express();
 const PORT = process.env.PORT || 3000;
+
 app.use(compression());
 app.use(cors());
 app.use(express.json());
@@ -104,15 +110,23 @@ app.get('/healthz', (_req, res) => res.send('OK'));
 app.post('/dialogflow-webhook', (req, res) => {
   console.log(chalk.blue('🌐 [Webhook]') + ' Llamada a /dialogflow-webhook');
   const agent = new WebhookClient({ request: req, response: res });
-  function welcome(agent) { agent.add('¡Hola! ¿En qué puedo ayudarte?'); }
-  function fallback(agent) { agent.add('Lo siento, no entendí. ¿Podrías reformularlo?'); }
+
+  function welcome(agent) {
+    agent.add('¡Hola! ¿En qué puedo ayudarte?');
+  }
+  function fallback(agent) {
+    agent.add('Lo siento, no entendí. ¿Podrías reformularlo?');
+  }
+
   const intentMap = new Map();
   intentMap.set('Default Welcome Intent', welcome);
   intentMap.set('Default Fallback Intent', fallback);
+  // TODO: agrega más mappings según tus intents
+
   agent.handleRequest(intentMap);
 });
 
-// Endpoint para enviar mensajes desde el panel de operador
+// Endpoint para que el operador envíe mensajes
 app.post('/send', async (req, res) => {
   console.log(chalk.blue('👤 [Operador]') + ' Solicitud /send');
   const { numero, mensaje } = req.body;
@@ -125,10 +139,11 @@ app.post('/send', async (req, res) => {
     await whatsappClient.sendMessage(chatId, mensaje);
     console.log(chalk.green('✅ [Operador]') + ' Mensaje enviado a', numero);
     res.status(200).json({ success: true });
-  } catch (error) {
-    console.error(chalk.red('❌ [Error Operador]') + ' No se pudo enviar el mensaje', error);
+  } catch (err) {
+    console.error(chalk.red('❌ [Error Operador]') + ' No se pudo enviar el mensaje', err);
     res.status(500).json({ error: 'No se pudo enviar el mensaje' });
   }
 });
 
-app.listen(PORT, () => console.log(chalk.green('🚀 [Server]') + ` Escuchando en el puerto ${PORT}`));
+// Iniciar servidor HTTP
+app.listen(PORT, () => console.log(chalk.green('🚀 [Server]') + ` Escuchando en puerto ${PORT}`));
