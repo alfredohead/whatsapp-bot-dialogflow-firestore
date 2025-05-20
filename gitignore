@@ -1,6 +1,18 @@
+# Dependencies
 node_modules/
+
+# Environment and credentials
 .env
-*.json
+serviceAccount.json
 .wwebjs_auth/
-whatsapp-data/
+.wwebjs_cache/
+whatsapp-sessions/
+*.json
 *.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Fly.io
+.fly/
