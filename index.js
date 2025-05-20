@@ -2,6 +2,8 @@
 // Asegúrate de tener "type": "module" en tu package.json
 
 import 'dotenv/config';
+import pkg from 'whatsapp-web.js';
+const { Client, LocalAuth } = pkg;
 import { Client, LocalAuth } from 'whatsapp-web.js';
 import express from 'express';
 import qrcode from 'qrcode-terminal';
