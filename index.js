@@ -130,4 +130,11 @@ app.post('/send', async (req, res) => {
 const PORT = process.env.PORT || 3000;
 
 whatsappClient.initialize();
-app.listen(PORT, () => console.log(chalk.green('🚀 [Server]') + ` Listening on port ${PORT}`));
+app.listen(PORT, () => console.log(chalk.green('🚀 [Server]') + ` Listening on port ${PORT}`));// ...existing code...
+
+// Inicializar cliente de WhatsApp y servidor
+const PORT = process.env.PORT || 8080;
+const HOST = '0.0.0.0';
+
+whatsappClient.initialize();
+app.listen(PORT, HOST, () => console.log(chalk.green('🚀 [Servidor]') + ` Escuchando en ${HOST}:${PORT}`));
