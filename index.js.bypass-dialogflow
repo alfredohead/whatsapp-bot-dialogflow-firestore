@@ -1,4 +1,4 @@
-/ Bypass Dialogflow - Versión simplificada que solo usa WhatsApp y OpenAI
+// Bypass Dialogflow - Versión simplificada que solo usa WhatsApp y OpenAI
 import fs from 'fs';
 import path from 'path';
 import chalk from 'chalk';
