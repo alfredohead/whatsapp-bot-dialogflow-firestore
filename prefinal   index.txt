@@ -6,8 +6,7 @@ const { WebhookClient } = require('dialogflow-fulfillment');
 const { initializeApp, cert } = require('firebase-admin/app');
 const { getFirestore } = require('firebase-admin/firestore');
 const dialogflow = require('@google-cloud/dialogflow');
-const compression = require('compression');
-require('dotenv').config(); // ✅ Para usar .env
+const uuid = require('uuid');
 
 // 🔐 Cargar credenciales desde variable de entorno o archivo
 let firebaseCredentials;
@@ -33,16 +32,6 @@ initializeApp({
 });
 const db = getFirestore();
 
-// 🧠 Inicializar cliente de Dialogflow
-const sessionClient = new dialogflow.SessionsClient({
-  credentials: {
-    client_email: firebaseCredentials.client_email,
-    private_key: firebaseCredentials.private_key,
-  },
-  projectId: firebaseCredentials.project_id,
-});
-const sessionPaths = new Map();
-
 // 🤖 Inicializar cliente de WhatsApp
 const client = new Client({
   authStrategy: new LocalAuth(),
@@ -55,7 +44,6 @@ const client = new Client({
 // 🌐 Inicializar servidor Express
 const app = express();
 const port = process.env.PORT || 8080;
-app.use(compression());
 app.use(express.json());
 
 app.get('/', (req, res) => {
@@ -104,50 +92,52 @@ client.on('ready', () => {
 client.on('message', async (message) => {
   console.log(`📩 Mensaje recibido: ${message.body}`);
   const userId = message.from;
+
+  // 🚫 Ignorar mensajes de grupo por defecto
   const isGroup = userId.endsWith('@g.us');
-  const contextoRef = db.collection('contextos').doc(userId);
-  const contextoSnap = await contextoRef.get();
-  const contexto = contextoSnap.exists ? contextoSnap.data() : {};
-
   if (isGroup) {
-    if (message.body.toLowerCase() === 'bot') {
-      await contextoRef.set({ modo: 'bot' });
-      return message.reply('🤖 Bot activado en este grupo. ¿En qué puedo ayudarte?');
-    }
+    const contextoRef = db.collection('contextos').doc(userId);
+    const contextoSnap = await contextoRef.get();
+    const contexto = contextoSnap.exists ? contextoSnap.data() : {};
 
-    if (message.body.toLowerCase() === 'operador') {
-      await contextoRef.set({ modo: 'humano' });
-      return message.reply('🙋‍♂️ El bot fue desactivado. Estás hablando con un operador. Escribí "bot" para volver conmigo.');
-    }
-
-    if (contexto.modo !== 'bot') return;
-  } else {
-    if (message.body.toLowerCase() === 'operador') {
-      await contextoRef.set({ modo: 'humano' });
-      return message.reply('🙋‍♂️ Te derivamos con un operador humano. Escribí "bot" para volver conmigo.');
-    }
-
+    // Activar el bot solo si alguien dice "bot"
     if (message.body.toLowerCase() === 'bot') {
       await contextoRef.set({ modo: 'bot' });
       return message.reply('🤖 Bot activado. ¿En qué puedo ayudarte?');
     }
 
-    if (contexto.modo === 'humano') return;
-
-    if (!contexto.modo) {
-      await contextoRef.set({ modo: 'bot' });
+    // Si no está activado, ignorar mensaje
+    if (contexto.modo !== 'bot') {
+      return;
     }
   }
 
-  if (!message.body || typeof message.body !== 'string' || message.body.trim() === '') {
-    console.warn('⚠️ Mensaje vacío o no válido, no se envía a Dialogflow');
+  // 🔁 Comandos generales
+  if (message.body.toLowerCase() === 'operador') {
+    await db.collection('contextos').doc(userId).set({ modo: 'humano' });
+    return message.reply('🙋‍♂️ Te derivamos con un operador humano. Escribí "bot" para volver conmigo.');
+  }
+
+  const contextoRef = db.collection('contextos').doc(userId);
+  const contextoSnap = await contextoRef.get();
+  const contexto = contextoSnap.exists ? contextoSnap.data() : {};
+  if (contexto.modo === 'humano') {
     return;
   }
 
-  if (!sessionPaths.has(userId)) {
-    sessionPaths.set(userId, sessionClient.projectAgentSessionPath(firebaseCredentials.project_id, userId));
-  }
-  const sessionPath = sessionPaths.get(userId);
+  // 🧠 Enviar a Dialogflow
+  const sessionClient = new dialogflow.SessionsClient({
+    credentials: {
+      client_email: firebaseCredentials.client_email,
+      private_key: firebaseCredentials.private_key,
+    },
+    projectId: firebaseCredentials.project_id,
+  });
+
+  const sessionPath = sessionClient.projectAgentSessionPath(
+    firebaseCredentials.project_id,
+    userId
+  );
 
   const request = {
     session: sessionPath,
@@ -160,23 +150,9 @@ client.on('message', async (message) => {
   };
 
   try {
-    const start = Date.now();
     const responses = await sessionClient.detectIntent(request);
-    const duration = Date.now() - start;
-    console.log(`⏱️ Dialogflow respondió en ${duration}ms`);
-
     const result = responses[0].queryResult;
-
-    let reply;
-
-    if (!result.intent || result.intent.displayName === 'Default Fallback Intent') {
-      console.log('🤖 Dialogflow no entendió. Usando GPT...');
-      const responderConGPT = require('./openai/gptResponder');
-      reply = await responderConGPT(message.body);
-    } else {
-      reply = result.fulfillmentText || '🤖 Lo siento, no tengo una respuesta para eso.';
-    }
-
+    const reply = result.fulfillmentText || '🤖 Lo siento, no tengo una respuesta para eso.';
     await message.reply(reply);
     console.log(`🤖 Respuesta enviada: ${reply}`);
   } catch (error) {
@@ -192,20 +168,3 @@ app.listen(port, () => {
   console.log(`🚀 Servidor Express activo en puerto ${port}`);
 });
 
-// Endpoint para recibir mensajes desde operador
-app.post('/send', async (req, res) => {
-  const { numero, mensaje } = req.body;
-
-  if (!numero || !mensaje) {
-    return res.status(400).json({ error: 'Faltan parámetros' });
-  }
-
-  try {
-    const chatId = numero + '@c.us';
-    await client.sendMessage(chatId, mensaje);
-    res.status(200).json({ success: true });
-  } catch (error) {
-    console.error('Error al enviar mensaje desde operador:', error);
-    res.status(500).json({ error: 'No se pudo enviar el mensaje' });
-  }
-});

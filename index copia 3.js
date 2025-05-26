@@ -7,7 +7,6 @@ const { initializeApp, cert } = require('firebase-admin/app');
 const { getFirestore } = require('firebase-admin/firestore');
 const dialogflow = require('@google-cloud/dialogflow');
 const compression = require('compression');
-require('dotenv').config(); // ✅ Para usar .env
 
 // 🔐 Cargar credenciales desde variable de entorno o archivo
 let firebaseCredentials;
@@ -33,7 +32,7 @@ initializeApp({
 });
 const db = getFirestore();
 
-// 🧠 Inicializar cliente de Dialogflow
+// 🧠 Inicializar cliente de Dialogflow una vez
 const sessionClient = new dialogflow.SessionsClient({
   credentials: {
     client_email: firebaseCredentials.client_email,
@@ -166,17 +165,7 @@ client.on('message', async (message) => {
     console.log(`⏱️ Dialogflow respondió en ${duration}ms`);
 
     const result = responses[0].queryResult;
-
-    let reply;
-
-    if (!result.intent || result.intent.displayName === 'Default Fallback Intent') {
-      console.log('🤖 Dialogflow no entendió. Usando GPT...');
-      const responderConGPT = require('./openai/gptResponder');
-      reply = await responderConGPT(message.body);
-    } else {
-      reply = result.fulfillmentText || '🤖 Lo siento, no tengo una respuesta para eso.';
-    }
-
+    const reply = result.fulfillmentText || '🤖 Lo siento, no tengo una respuesta para eso.';
     await message.reply(reply);
     console.log(`🤖 Respuesta enviada: ${reply}`);
   } catch (error) {
@@ -190,22 +179,4 @@ client.initialize();
 // 🚀 Servidor Express
 app.listen(port, () => {
   console.log(`🚀 Servidor Express activo en puerto ${port}`);
-});
-
-// Endpoint para recibir mensajes desde operador
-app.post('/send', async (req, res) => {
-  const { numero, mensaje } = req.body;
-
-  if (!numero || !mensaje) {
-    return res.status(400).json({ error: 'Faltan parámetros' });
-  }
-
-  try {
-    const chatId = numero + '@c.us';
-    await client.sendMessage(chatId, mensaje);
-    res.status(200).json({ success: true });
-  } catch (error) {
-    console.error('Error al enviar mensaje desde operador:', error);
-    res.status(500).json({ error: 'No se pudo enviar el mensaje' });
-  }
 });
