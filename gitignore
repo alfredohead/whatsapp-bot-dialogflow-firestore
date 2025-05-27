@@ -1,22 +1,16 @@
-# Dependencies
+# Dependencias
 node_modules/
 
-# Environment and credentials
+# Ambiente y credenciales
 .env
 serviceAccount.json
 .wwebjs_auth/
 .wwebjs_cache/
 whatsapp-sessions/
-*.json
-*.log
 
-# OS files
+# Archivos del sistema
 .DS_Store
 Thumbs.db
 
-# Fly.io
-<<<<<<< HEAD
+# Despliegue
 .fly/
-=======
-.fly/
->>>>>>> bc1419f0a286a8aa50ce53123e5ece4be9ae893d
