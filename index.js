@@ -32,7 +32,7 @@ const client = new Client({
             '--disable-renderer-backgrounding',
             '--disable-device-discovery-notifications'
         ],
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium'
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome'
     }
 });
 
