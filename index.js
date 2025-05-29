@@ -1,10 +1,11 @@
-// Importaciones usando ES modules
 import 'dotenv/config';
 import express from 'express';
-import { Client, LocalAuth } from 'whatsapp-web.js';
+import pkg from 'whatsapp-web.js';  // Cambiar a importación del paquete
 import qrcode from 'qrcode-terminal';
 import fs from 'fs';
 import path from 'path';
+
+const { Client, LocalAuth } = pkg;  // Desestructurar después de importar
 
 // Configuración del servidor Express
 const app = express();
