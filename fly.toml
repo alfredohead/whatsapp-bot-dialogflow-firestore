@@ -1,13 +1,28 @@
+# fly.toml app configuration file generated for asistente-whatsapp-twilight-leaf-7511 on 2025-03-31T19:14:51-03:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
 app = "whatsapp-bot-asistente-wandering-brook-4491"
+primary_region = "gru"
 
 [env]
   NODE_ENV = "production"
+  PORT = "3000"
+  GOOGLE_PROJECT_ID = "asistentedependencia-mwqx"
+  OPENAI_API_KEY = "{{ env.OPENAI_API_KEY }}"
+  FIREBASE_JSON = "{{ env.FIREBASE_JSON }}"
+  PUPPETEER_EXECUTABLE_PATH = "/usr/bin/chromium-browser"
 
 [build]
   dockerfile = "Dockerfile"
 
 [experimental]
   auto_rollback = true
+
+[[mounts]]
+  source = "whatsapp_data"
+  destination = "/app/session"
 
 [[services]]
   internal_port = 3000

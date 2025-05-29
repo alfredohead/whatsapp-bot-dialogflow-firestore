@@ -1,0 +1,26 @@
+{
+  "name": "whatsapp-bot-dialogflow-firestore",
+  "version": "1.0.0",
+  "description": "Bot de WhatsApp integrado con Dialogflow, Firestore y OpenAI",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@google-cloud/dialogflow": "^4.5.0",
+    "chalk": "^5.2.0",
+    "compression": "^1.7.4",
+    "cors": "^2.8.5",
+    "dialogflow-fulfillment": "^0.6.1",
+    "dotenv": "^16.5.0",
+    "express": "^4.18.2",
+    "firebase-admin": "^11.10.1",
+    "openai": "^4.103.0",
+    "qrcode-terminal": "^0.12.0",
+    "whatsapp-web.js": "^1.19.0"
+  }
+}
