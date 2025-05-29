@@ -33,7 +33,7 @@ const client = new Client({
             '--disable-device-discovery-notifications',
             '--js-flags=--max-old-space-size=128' // Limita la memoria de V8
         ],
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome'
+        executablePath: '/usr/bin/google-chrome'
     }
 });
 
