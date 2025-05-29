@@ -4,17 +4,16 @@ FROM ghcr.io/puppeteer/puppeteer:20.9.0
 USER root
 WORKDIR /app
 
-# Copiar los archivos de dependencias
-COPY package*.json ./
+# Install Chrome
+RUN apt-get update && apt-get install -y chromium
 
-# Instalar dependencias
+COPY package*.json ./
 RUN npm install
 
-# Copiar el resto de los archivos
 COPY . .
 
 ENV NODE_ENV=production
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+ENV PORT=8080
 
-# Comando de inicio
 CMD ["node", "index.js"]
