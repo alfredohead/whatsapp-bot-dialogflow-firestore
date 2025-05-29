@@ -19,11 +19,20 @@ const client = new Client({
             '--disable-setuid-sandbox',
             '--disable-dev-shm-usage',
             '--disable-gpu',
-            '--disable-software-rasterizer'
+            '--disable-software-rasterizer',
+            '--single-process',
+            '--no-zygote',
+            '--disable-extensions',
+            '--disable-background-networking',
+            '--disable-sync',
+            '--disable-default-apps',
+            '--disable-translate',
+            '--disable-features=site-per-process',
+            '--disable-background-timer-throttling',
+            '--disable-renderer-backgrounding',
+            '--disable-device-discovery-notifications'
         ],
-        executablePath: process.env.NODE_ENV === 'production' 
-            ? '/usr/bin/google-chrome'
-            : undefined
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium'
     }
 });
 
