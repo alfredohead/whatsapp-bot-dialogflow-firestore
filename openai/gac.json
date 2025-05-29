@@ -1,0 +1,2 @@
+// Después de fs.writeFileSync(gacPath, JSON.stringify(firebaseCredentials));
+process.env.GOOGLE_APPLICATION_CREDENTIALS = gacPath;

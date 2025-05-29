@@ -1,11 +1,31 @@
 import 'dotenv/config';
 import express from 'express';
-import pkg from 'whatsapp-web.js';  // Cambiar a importación del paquete
+import pkg from 'whatsapp-web.js';
 import qrcode from 'qrcode-terminal';
 import fs from 'fs';
 import path from 'path';
 
-const { Client, LocalAuth } = pkg;  // Desestructurar después de importar
+const { Client, LocalAuth } = pkg;
+
+// Configure WhatsApp client
+const client = new Client({
+    authStrategy: new LocalAuth({
+        dataPath: './whatsapp-sessions'
+    }),
+    puppeteer: {
+        headless: true,
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+            '--disable-software-rasterizer'
+        ],
+        executablePath: process.env.NODE_ENV === 'production' 
+            ? '/usr/bin/google-chrome'
+            : undefined
+    }
+});
 
 // Configuración del servidor Express
 const app = express();
@@ -14,27 +34,6 @@ const PORT = process.env.PORT || 3000;
 // Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
-// Configuración del cliente WhatsApp
-const client = new Client({
-    authStrategy: new LocalAuth({
-        clientId: 'whatsapp-bot',
-        dataPath: './session'
-    }),
-    puppeteer: {
-        headless: true,
-        args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-accelerated-2d-canvas',
-            '--no-first-run',
-            '--no-zygote',
-            '--single-process',
-            '--disable-gpu'
-        ]
-    }
-});
 
 // Variables de estado
 let isClientReady = false;
