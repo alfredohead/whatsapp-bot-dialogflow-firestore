@@ -1,0 +1,236 @@
+// 0) Primeras líneas: montar credenciales ANTES de cualquier import de GCP
+import fs from 'fs';
+import path from 'path';
+import chalk from 'chalk';
+
+// Importar el módulo de configuración de credenciales
+import setupCredentials from './fly-credentials-fix.js';
+
+// Configurar credenciales antes de continuar
+const credentialsOk = await setupCredentials();
+if (!credentialsOk) {
+  console.error(chalk.red('❌ [Fatal Error]') + ' No se pudieron configurar las credenciales. Saliendo...');
+  process.exit(1);
+}
+
+// — Ahora sí, importa todo lo demás —
+import 'dotenv/config';
+import express from 'express';
+import compression from 'compression';
+import cors from 'cors';
+import qrcode from 'qrcode-terminal';
+import { WebhookClient } from 'dialogflow-fulfillment';
+import { SessionsClient } from '@google-cloud/dialogflow';
+import { initializeApp } from 'firebase-admin/app';
+import { getFirestore } from 'firebase-admin/firestore';
+import OpenAI from 'openai';
+import whatsappWeb from 'whatsapp-web.js';
+
+const { Client, LocalAuth } = whatsappWeb;
+
+// Verifica que el ID del proyecto esté configurado
+if (!process.env.GOOGLE_PROJECT_ID) {
+  console.error(chalk.red('❌ [Error]'), 'La variable GOOGLE_PROJECT_ID no está configurada');
+  process.exit(1);
+}
+
+try {
+  // Inicializa Firebase Admin (usará GOOGLE_APPLICATION_CREDENTIALS automáticamente)
+  console.log(chalk.blue('🔧 [Setup]') + ' Inicializando Firebase Admin...');
+  initializeApp();
+  const firestore = getFirestore();
+  console.log(chalk.green('✅ [Setup]') + ' Firebase Admin inicializado correctamente');
+
+  // Dialogflow
+  console.log(chalk.blue('🔧 [Setup]') + ' Configurando Dialogflow...');
+  const projectId = process.env.GOOGLE_PROJECT_ID;
+  const dfClient = new SessionsClient({ 
+    projectId,
+    // Añade un timeout para evitar bloqueos indefinidos
+    timeout: 10000 
+  });
+  console.log(chalk.green('✅ [Setup]') + ' Cliente de Dialogflow configurado correctamente');
+
+  // OpenAI
+  if (!process.env.OPENAI_API_KEY) {
+    console.warn(chalk.yellow('⚠️ [Warning]'), 'La variable OPENAI_API_KEY no está configurada. Las respuestas de fallback no funcionarán.');
+  }
+  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+  // WhatsApp
+  console.log(chalk.blue('🔧 [Setup]') + ' Configurando cliente de WhatsApp...');
+  const whatsappClient = new Client({
+    authStrategy: new LocalAuth({
+      clientId: 'bot',
+      dataPath: '/app/session'
+    }),
+    puppeteer: {
+      headless: true,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--no-first-run',
+        '--disable-gpu'
+      ],
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH
+    }
+  });
+
+  // Handlers WhatsApp
+  whatsappClient.on('qr', qr => {
+    console.log(chalk.blue('🔍 [QR]') + ' Generating QR code:');
+    qrcode.generate(qr, { small: true });
+  });
+  
+  whatsappClient.on('ready', () =>
+    console.log(chalk.green('✅ [WhatsApp]') + ' Client ready')
+  );
+  
+  whatsappClient.on('message', async msg => {
+    console.log(chalk.yellow('📥 [Message]'), msg.from, '-', msg.body);
+    try {
+      const sessionPath = dfClient.projectAgentSessionPath(projectId, msg.from);
+      const [dfRes] = await dfClient.detectIntent({
+        session: sessionPath,
+        queryInput: { text: { text: msg.body, languageCode: 'es' } }
+      });
+      const result = dfRes.queryResult;
+
+      try {
+        await firestore.collection('messages').add({
+          from: msg.from,
+          text: msg.body,
+          intent: result.intent?.displayName || 'Unknown',
+          timestamp: new Date()
+        });
+      } catch (firestoreError) {
+        console.error(chalk.red('❌ [Firestore Error]'), firestoreError);
+        // Continúa con la ejecución aunque falle Firestore
+      }
+
+      let reply = result.fulfillmentText;
+      if (!reply && process.env.OPENAI_API_KEY) {
+        try {
+          const chat = await openai.chat.completions.create({
+            model: 'gpt-3.5-turbo',
+            messages: [
+              { role: 'system', content: 'Eres un asistente conversacional útil.' },
+              { role: 'user', content: msg.body }
+            ]
+          });
+          reply = chat.choices[0].message.content.trim();
+        } catch (openaiError) {
+          console.error(chalk.red('❌ [OpenAI Error]'), openaiError);
+          reply = "Lo siento, no puedo procesar tu solicitud en este momento.";
+        }
+      } else if (!reply) {
+        reply = "Lo siento, no entendí tu mensaje y el servicio de respaldo no está disponible.";
+      }
+
+      await whatsappClient.sendMessage(msg.from, reply);
+      console.log(chalk.magenta('📤 [Sent]'), reply);
+    } catch (err) {
+      console.error(chalk.red('❌ [Error]'), err);
+      try {
+        await whatsappClient.sendMessage(msg.from, "Lo siento, ocurrió un error al procesar tu mensaje. Por favor, inténtalo de nuevo más tarde.");
+      } catch (sendError) {
+        console.error(chalk.red('❌ [Send Error]'), sendError);
+      }
+    }
+  });
+
+  // Express
+  const app = express();
+  app.use(compression());
+  app.use(cors());
+  app.use(express.json());
+
+  app.get('/healthz', (_req, res) => {
+    // Verifica que las credenciales estén configuradas correctamente
+    if (!process.env.GOOGLE_APPLICATION_CREDENTIALS || !fs.existsSync(process.env.GOOGLE_APPLICATION_CREDENTIALS)) {
+      return res.status(500).json({ 
+        status: 'ERROR', 
+        message: 'Credenciales no configuradas correctamente' 
+      });
+    }
+    res.send('OK');
+  });
+
+  app.post('/dialogflow-webhook', (req, res) => {
+    const agent = new WebhookClient({ request: req, response: res });
+    const map = new Map([
+      ['Default Welcome Intent', a => a.add('¡Hola! ¿En qué puedo ayudarte?')],
+      ['Default Fallback Intent', a =>
+        a.add('Lo siento, no entendí. ¿Podrías reformularlo?')
+      ]
+    ]);
+    agent.handleRequest(map);
+  });
+
+  app.post('/send', async (req, res) => {
+    const { numero, mensaje } = req.body;
+    if (!numero || !mensaje)
+      return res.status(400).json({ error: 'Missing parameters' });
+    try {
+      await whatsappClient.sendMessage(`${numero}@c.us`, mensaje);
+      res.json({ success: true });
+    } catch (e) {
+      console.error(chalk.red('❌ [Error]'), e);
+      res.status(500).json({ error: 'Failed to send message' });
+    }
+  });
+
+  // Endpoint para verificar el estado de las credenciales
+  app.get('/check-credentials', (_req, res) => {
+    try {
+      const credPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+      if (!credPath) {
+        return res.status(500).json({ 
+          status: 'ERROR', 
+          message: 'GOOGLE_APPLICATION_CREDENTIALS no está configurado' 
+        });
+      }
+      
+      if (!fs.existsSync(credPath)) {
+        return res.status(500).json({ 
+          status: 'ERROR', 
+          message: `El archivo de credenciales no existe: ${credPath}` 
+        });
+      }
+      
+      const credContent = fs.readFileSync(credPath, 'utf8');
+      const creds = JSON.parse(credContent);
+      
+      res.json({ 
+        status: 'OK', 
+        credentials: {
+          type: creds.type,
+          project_id: creds.project_id,
+          client_email: creds.client_email
+        }
+      });
+    } catch (error) {
+      res.status(500).json({ 
+        status: 'ERROR', 
+        message: error.message 
+      });
+    }
+  });
+
+  const PORT = process.env.PORT || 3000;
+  const HOST = '0.0.0.0';
+  
+  // Inicializa WhatsApp
+  console.log(chalk.blue('🔧 [Setup]') + ' Inicializando cliente de WhatsApp...');
+  whatsappClient.initialize();
+  
+  // Inicia el servidor Express
+  app.listen(PORT, HOST, () =>
+    console.log(chalk.green('🚀 [Server]') + ` Listening on ${HOST}:${PORT}`)
+  );
+  
+} catch (error) {
+  console.error(chalk.red('❌ [Fatal Error]'), 'Error al inicializar la aplicación:', error);
+  process.exit(1);
+}
