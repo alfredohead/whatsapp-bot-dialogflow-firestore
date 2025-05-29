@@ -30,7 +30,8 @@ const client = new Client({
             '--disable-features=site-per-process',
             '--disable-background-timer-throttling',
             '--disable-renderer-backgrounding',
-            '--disable-device-discovery-notifications'
+            '--disable-device-discovery-notifications',
+            '--js-flags=--max-old-space-size=128' // Limita la memoria de V8
         ],
         executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome'
     }
