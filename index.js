@@ -1,243 +1,212 @@
-require('dotenv').config();
-const fs = require('fs');
-const path = require('path');
-const { Client, LocalAuth } = require('whatsapp-web.js');
-const { OpenAI } = require('openai');
-const qrcode = require('qrcode-terminal');
-const express = require('express');
-const compression = require('compression');
-const admin = require('firebase-admin');
-const dialogflowService = require('./services/dialogflow');
-const firestoreService = require('./services/firestore');
-const { handleHumanTransfer, handleBotReturn } = require('./services/commands');
-
-// Inicializar Firebase Admin si no está inicializado
-if (!admin.apps.length) {
-  const serviceAccount = JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON);
-  admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
-  });
-}
-
-// Cargar documentos de /docs para contexto adicional
-const docsDir = path.resolve('./docs');
-const areaDocs = {};
-if (fs.existsSync(docsDir)) {
-  fs.readdirSync(docsDir).forEach(file => {
-    const key = path.parse(file).name;
-    const fullPath = path.join(docsDir, file);
-    let content;
-    if (file.endsWith('.json')) {
-      content = JSON.parse(fs.readFileSync(fullPath, 'utf8'));
-    } else {
-      content = fs.readFileSync(fullPath, 'utf8');
-    }
-    areaDocs[key] = content;
-  });
-}
-
-// Configuración de OpenAI para fallback
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-let openai;
-if (OPENAI_API_KEY) {
-  openai = new OpenAI({ apiKey: OPENAI_API_KEY });
-  console.log('✅ [OpenAI] API configurada correctamente');
-} else {
-  console.warn('⚠️ [OpenAI] API no configurada. El fallback a GPT no estará disponible.');
-}
-
-// Mapa para historiales de chat con GPT
-const chatHistories = new Map();
-
-// Mensaje del sistema personalizado para GPT
-const SYSTEM_PROMPT = `Eres un asistente virtual de la Municipalidad de San Martín. Atiendes consultas ciudadanas relacionadas con distintas áreas:
-
-- Economía Social y Asociativismo
-- Punto Digital
-- Incubadora de Empresas
-- Escuela de Oficios Manuel Belgrano
-- Programas Nacionales
-- Trámites y contacto general con el municipio
-
-Responde en español con un lenguaje claro, humano y accesible. Usa emojis ocasionalmente para hacer la conversación más amigable.`;
-
-// Configuración del cliente WhatsApp
-const client = new Client({
-  authStrategy: new LocalAuth({
-    dataPath: './whatsapp-sessions'
-  }),
-  puppeteer: {
-    headless: true,
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage'
-    ]
-  }
-});
-
-// Eventos de WhatsApp
-client.on('qr', qr => {
-  console.log('🔧 [Setup] Generando código QR...');
-  qrcode.generate(qr, { small: true });
-});
-
-client.on('ready', () => {
-  console.log('✅ [WhatsApp] Cliente listo y conectado');
-});
-
-client.on('message', async msg => {
-  const userId = msg.from;
-  const incoming = msg.body;
-  console.log(`📥 [Mensaje] ${userId}: ${incoming}`);
-
-  try {
-    // Obtener datos del usuario desde Firestore
-    const userData = await firestoreService.getUserData(userId);
-    
-    // Verificar comandos de transferencia a humano/bot
-    if (await handleHumanTransfer(msg, userData)) return;
-    if (await handleBotReturn(msg, userData)) return;
-    if (userData.human) return; // Si está en modo humano, no procesar
-    
-    // Contador de intentos fallidos
-    const failedAttempts = userData.failedAttempts || 0;
-    
-    // Primero intentar con Dialogflow
-    try {
-      const { replyText, contextData } = await dialogflowService.sendTextToDialogflow(userId, incoming, userData);
-      
-      // Si Dialogflow devuelve una respuesta válida (no es un fallback)
-      if (replyText && !replyText.includes('No entendí eso') && !replyText.includes('no estoy seguro')) {
-        // Resetear contador de intentos fallidos si hubo éxito
-        if (failedAttempts > 0) {
-          await firestoreService.updateUserData(userId, { 
-            ...userData, 
-            failedAttempts: 0 
-          });
-        }
-        
-        await msg.reply(replyText);
-        console.log(`📤 [Respuesta Dialogflow] ${userId}: ${replyText}`);
-        return;
-      }
-      
-      // Si llegamos aquí, Dialogflow no entendió la consulta
-      console.log(`⚠️ [Dialogflow] No entendió la consulta: ${incoming}`);
-      
-      // Incrementar contador de intentos fallidos
-      const newFailedAttempts = failedAttempts + 1;
-      await firestoreService.updateUserData(userId, { 
-        ...userData, 
-        failedAttempts: newFailedAttempts 
-      });
-      
-      // Si hay demasiados intentos fallidos, sugerir hablar con un humano
-      if (newFailedAttempts >= 3) {
-        await msg.reply('Parece que estoy teniendo dificultades para entender tu consulta. ¿Te gustaría hablar con un operador humano? Escribe "operador" para ser derivado.');
-        return;
-      }
-      
-      // Intentar con GPT como fallback
-      if (openai) {
-        // Preparar historial de chat para GPT
-        let history = chatHistories.get(userId) || [];
-        if (history.length === 0) {
-          history.push({ role: 'system', content: SYSTEM_PROMPT });
-        }
-        
-        // Buscar documentos relevantes para enriquecer el contexto
-        const lower = incoming.toLowerCase();
-        for (const key of Object.keys(areaDocs)) {
-          if (lower.includes(key.replace('_', ' '))) {
-            const docContent = areaDocs[key];
-            history.push({ 
-              role: 'system', 
-              content: `Referencia ${key}:\n${typeof docContent === 'string' ? docContent : JSON.stringify(docContent)}`
-            });
-            break;
-          }
-        }
-        
-        // Añadir el mensaje del usuario
-        history.push({ role: 'user', content: incoming });
-        
-        // Llamar a la API de OpenAI
-        const response = await openai.chat.completions.create({
-          model: 'gpt-3.5-turbo',
-          messages: history,
-        });
-        
-        const reply = response.choices[0]?.message?.content?.trim() || 
-                     'Disculpa, no pude procesar tu consulta.';
-        
-        // Guardar respuesta en el historial
-        history.push({ role: 'assistant', content: reply });
-        
-        // Limitar el tamaño del historial
-        if (history.length > 12) {
-          history = [history[0], ...history.slice(-11)];
-        }
-        chatHistories.set(userId, history);
-        
-        await msg.reply(reply);
-        console.log(`📤 [Respuesta GPT] ${userId}: ${reply}`);
-      } else {
-        // Si no hay OpenAI configurado, usar respuesta de fallback de Dialogflow
-        await msg.reply(replyText || 'No pude entender tu consulta. ¿Podrías reformularla?');
-      }
-    } catch (dialogflowError) {
-      console.error('❌ [Error Dialogflow]', dialogflowError);
-      
-      // Si falla Dialogflow y tenemos OpenAI, intentar con GPT
-      if (openai) {
-        let history = chatHistories.get(userId) || [];
-        if (history.length === 0) {
-          history.push({ role: 'system', content: SYSTEM_PROMPT });
-        }
-        
-        history.push({ role: 'user', content: incoming });
-        
-        const response = await openai.chat.completions.create({
-          model: 'gpt-3.5-turbo',
-          messages: history,
-        });
-        
-        const reply = response.choices[0]?.message?.content?.trim() || 
-                     'Disculpa, estamos experimentando dificultades técnicas.';
-        
-        history.push({ role: 'assistant', content: reply });
-        
-        if (history.length > 12) {
-          history = [history[0], ...history.slice(-11)];
-        }
-        chatHistories.set(userId, history);
-        
-        await msg.reply(reply);
-        console.log(`📤 [Respuesta GPT (fallback)] ${userId}: ${reply}`);
-      } else {
-        // Si no hay OpenAI, enviar mensaje de error genérico
-        await msg.reply('Lo siento, estamos experimentando dificultades técnicas. Por favor, intenta más tarde o escribe "operador" para hablar con una persona.');
-      }
-    }
-  } catch (error) {
-    console.error('❌ [Error General]', error);
-    await msg.reply('Lo siento, ocurrió un error. Por favor, intenta más tarde o escribe "operador" para hablar con una persona.');
-  }
-});
+// Importaciones usando ES modules
+import 'dotenv/config';
+import express from 'express';
+import { Client, LocalAuth } from 'whatsapp-web.js';
+import qrcode from 'qrcode-terminal';
+import fs from 'fs';
+import path from 'path';
 
 // Configuración del servidor Express
 const app = express();
-app.use(compression());
+const PORT = process.env.PORT || 3000;
+
+// Middleware
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-const PORT = process.env.PORT || 8080;
-const HOST = '0.0.0.0';
+// Configuración del cliente WhatsApp
+const client = new Client({
+    authStrategy: new LocalAuth({
+        clientId: 'whatsapp-bot',
+        dataPath: './session'
+    }),
+    puppeteer: {
+        headless: true,
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-accelerated-2d-canvas',
+            '--no-first-run',
+            '--no-zygote',
+            '--single-process',
+            '--disable-gpu'
+        ]
+    }
+});
 
-app.get('/health', (_, res) => res.send('OK'));
+// Variables de estado
+let isClientReady = false;
+let qrCodeData = null;
 
-// Inicializar cliente y servidor
+// Eventos del cliente WhatsApp
+client.on('qr', (qr) => {
+    console.log('QR Code generado:');
+    qrcode.generate(qr, { small: true });
+    qrCodeData = qr;
+});
+
+client.on('ready', () => {
+    console.log('✅ Cliente WhatsApp conectado y listo!');
+    isClientReady = true;
+    qrCodeData = null;
+});
+
+client.on('authenticated', () => {
+    console.log('✅ Cliente autenticado correctamente');
+});
+
+client.on('auth_failure', (msg) => {
+    console.error('❌ Error de autenticación:', msg);
+});
+
+client.on('disconnected', (reason) => {
+    console.log('❌ Cliente desconectado:', reason);
+    isClientReady = false;
+});
+
+// Manejo de mensajes recibidos
+client.on('message', async (message) => {
+    try {
+        console.log(`📩 Mensaje recibido de ${message.from}: ${message.body}`);
+        
+        // Ejemplo de respuesta automática
+        if (message.body.toLowerCase().includes('hola')) {
+            await message.reply('¡Hola! ¿En qué puedo ayudarte?');
+        }
+        
+        // Agregar más lógica de respuestas aquí
+        
+    } catch (error) {
+        console.error('Error procesando mensaje:', error);
+    }
+});
+
+// Rutas de la API
+app.get('/', (req, res) => {
+    res.json({
+        status: 'ok',
+        message: 'WhatsApp Bot API funcionando',
+        clientReady: isClientReady,
+        timestamp: new Date().toISOString()
+    });
+});
+
+// Endpoint para verificar estado
+app.get('/status', (req, res) => {
+    res.json({
+        ready: isClientReady,
+        qrCode: qrCodeData,
+        timestamp: new Date().toISOString()
+    });
+});
+
+// Endpoint para enviar mensajes
+app.post('/send-message', async (req, res) => {
+    try {
+        const { number, message } = req.body;
+        
+        if (!isClientReady) {
+            return res.status(503).json({
+                error: 'Cliente WhatsApp no está listo',
+                ready: false
+            });
+        }
+        
+        if (!number || !message) {
+            return res.status(400).json({
+                error: 'Número y mensaje son requeridos'
+            });
+        }
+        
+        // Formatear número (agregar @c.us si no lo tiene)
+        const chatId = number.includes('@') ? number : `${number}@c.us`;
+        
+        await client.sendMessage(chatId, message);
+        
+        res.json({
+            success: true,
+            message: 'Mensaje enviado correctamente',
+            to: number,
+            timestamp: new Date().toISOString()
+        });
+        
+    } catch (error) {
+        console.error('Error enviando mensaje:', error);
+        res.status(500).json({
+            error: 'Error enviando mensaje',
+            details: error.message
+        });
+    }
+});
+
+// Endpoint para obtener QR Code
+app.get('/qr', (req, res) => {
+    if (qrCodeData) {
+        res.json({
+            qr: qrCodeData,
+            ready: false
+        });
+    } else if (isClientReady) {
+        res.json({
+            message: 'Cliente ya está conectado',
+            ready: true
+        });
+    } else {
+        res.json({
+            message: 'QR Code no disponible',
+            ready: false
+        });
+    }
+});
+
+// Health check para Fly.io
+app.get('/health', (req, res) => {
+    res.status(200).json({
+        status: 'healthy',
+        timestamp: new Date().toISOString()
+    });
+});
+
+// Manejo de errores globales
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+process.on('uncaughtException', (error) => {
+    console.error('Uncaught Exception:', error);
+    process.exit(1);
+});
+
+// Graceful shutdown
+process.on('SIGINT', async () => {
+    console.log('🛑 Cerrando aplicación...');
+    try {
+        await client.destroy();
+        process.exit(0);
+    } catch (error) {
+        console.error('Error cerrando cliente:', error);
+        process.exit(1);
+    }
+});
+
+process.on('SIGTERM', async () => {
+    console.log('🛑 SIGTERM recibido, cerrando aplicación...');
+    try {
+        await client.destroy();
+        process.exit(0);
+    } catch (error) {
+        console.error('Error cerrando cliente:', error);
+        process.exit(1);
+    }
+});
+
+// Inicializar cliente WhatsApp
+console.log('🚀 Inicializando cliente WhatsApp...');
 client.initialize();
-app.listen(PORT, HOST, () => {
-  console.log(`🚀 [Servidor] Escuchando en ${HOST}:${PORT}`);
+
+// Iniciar servidor
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🌐 Servidor corriendo en puerto ${PORT}`);
+    console.log(`📱 Bot WhatsApp iniciado`);
 });
