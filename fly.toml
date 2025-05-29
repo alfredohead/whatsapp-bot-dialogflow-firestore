@@ -8,39 +8,8 @@ primary_region = "gru"
 
 [env]
   NODE_ENV = "production"
-  PORT = "3000"
-  GOOGLE_PROJECT_ID = "asistentedependencia-mwqx"
-  OPENAI_API_KEY = "{{ env.OPENAI_API_KEY }}"
-  FIREBASE_JSON = "{{ env.FIREBASE_JSON }}"
-  PUPPETEER_EXECUTABLE_PATH = "/usr/bin/chromium-browser"
-
-[build]
-  dockerfile = "Dockerfile"
-
-[experimental]
-  auto_rollback = true
-
-[[mounts]]
-  source = "whatsapp_data"
-  destination = "/app/session"
-
-[[services]]
-  internal_port = 3000
-  protocol = "tcp"
-
-  [[services.ports]]
-    handlers = ["http"]
-    port = 80
-    force_https = true
-
-  [[services.ports]]
-    handlers = ["tls", "http"]
-    port = 443
-
-  [[services.tcp_checks]]
-    interval = "30s"
-    timeout = "2s"
-    restart_limit = 0
+  PORT = "8080"
+  PUPPETEER_EXECUTABLE_PATH = "/usr/bin/chromium"
 
 [http_service]
   internal_port = 8080
@@ -48,3 +17,12 @@ primary_region = "gru"
   auto_stop_machines = true
   auto_start_machines = true
   min_machines_running = 1
+
+[[services.ports]]
+  handlers = ["http"]
+  port = 80
+  force_https = true
+
+[[services.ports]]
+  handlers = ["tls", "http"]
+  port = 443
