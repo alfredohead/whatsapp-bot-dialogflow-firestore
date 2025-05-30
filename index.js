@@ -1,19 +1,18 @@
-import 'dotenv/config';
-import axios from 'axios';
-import qrcode from 'qrcode';
-import http from 'http';
-import express from 'express';
-import pkg from 'whatsapp-web.js';
-const { Client, LocalAuth } = pkg;
-import { Server as SocketIOServer } from 'socket.io';
-import { OpenAI } from 'openai';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+// Importaciones con sintaxis CommonJS
+require('dotenv').config();
+const axios = require('axios');
+const qrcode = require('qrcode');
+const http = require('http');
+const express = require('express');
+const { Client, LocalAuth } = require('whatsapp-web.js');
+const { Server: SocketIOServer } = require('socket.io');
+const { OpenAI } = require('openai');
+const fs = require('fs');
+const path = require('path');
 
 // Importar servicios
-import dialogflowService from './services/dialogflow.js';
-import firestoreService from './services/firestore.js';
+const dialogflowService = require('./services/dialogflow');
+const firestoreService = require('./services/firestore');
 
 // 🚀 Variables de entorno
 const APPS_SCRIPT_WEBHOOK_URL = process.env.APPS_SCRIPT_WEBHOOK_URL;
@@ -142,6 +141,27 @@ client.on('disconnected', reason => {
   io.emit('disconnected', reason);
   setTimeout(() => initializeClient(), 5000);
 });
+
+/**
+ * Funciones para manejar transferencia a humano y retorno a bot
+ */
+async function handleHumanTransfer(msg, userData) {
+  if (msg.body.toLowerCase() === 'operador') {
+    await firestoreService.updateUserData(msg.from, { ...userData, human: true });
+    await msg.reply('Te paso con un operador. Cuando quieras volver a hablar con el bot, escribí "bot".');
+    return true;
+  }
+  return false;
+}
+
+async function handleBotReturn(msg, userData) {
+  if (msg.body.toLowerCase() === 'bot') {
+    await firestoreService.updateUserData(msg.from, { ...userData, human: false });
+    await msg.reply('Volviste con el bot 🤖. ¿En qué puedo ayudarte?');
+    return true;
+  }
+  return false;
+}
 
 // 📨 Procesamiento de mensajes entrantes
 client.on('message', async msg => {
@@ -343,27 +363,6 @@ app.post('/enviarBatch', express.json(), (req, res) => {
   res.status(202).send({ status: 'Iniciado' });
 });
 
-/**
- * Funciones para manejar transferencia a humano y retorno a bot
- */
-async function handleHumanTransfer(msg, userData) {
-  if (msg.body.toLowerCase() === 'operador') {
-    await firestoreService.updateUserData(msg.from, { ...userData, human: true });
-    await msg.reply('Te paso con un operador. Cuando quieras volver a hablar con el bot, escribí "bot".');
-    return true;
-  }
-  return false;
-}
-
-async function handleBotReturn(msg, userData) {
-  if (msg.body.toLowerCase() === 'bot') {
-    await firestoreService.updateUserData(msg.from, { ...userData, human: false });
-    await msg.reply('Volviste con el bot 🤖. ¿En qué puedo ayudarte?');
-    return true;
-  }
-  return false;
-}
-
 // 🏁 Iniciar servidor
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`🚀 Servidor escuchando en puerto ${PORT}`));
+server.listen(PORT, '0.0.0.0', () => console.log(`🚀 Servidor escuchando en puerto ${PORT}`));
