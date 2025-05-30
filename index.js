@@ -1,222 +1,369 @@
 import 'dotenv/config';
+import axios from 'axios';
+import qrcode from 'qrcode';
+import http from 'http';
 import express from 'express';
 import pkg from 'whatsapp-web.js';
-import qrcode from 'qrcode-terminal';
+const { Client, LocalAuth } = pkg;
+import { Server as SocketIOServer } from 'socket.io';
+import { OpenAI } from 'openai';
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
-const { Client, LocalAuth } = pkg;
+// Importar servicios
+import dialogflowService from './services/dialogflow.js';
+import firestoreService from './services/firestore.js';
 
-// Configure WhatsApp client
+// 🚀 Variables de entorno
+const APPS_SCRIPT_WEBHOOK_URL = process.env.APPS_SCRIPT_WEBHOOK_URL;
+const APPS_SCRIPT_WEBHOOK_SECRET = process.env.APPS_SCRIPT_WEBHOOK_SECRET;
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+
+// Configuración de OpenAI para fallback
+let openai;
+if (OPENAI_API_KEY) {
+  openai = new OpenAI({ apiKey: OPENAI_API_KEY });
+  console.log('✅ [OpenAI] API configurada correctamente');
+} else {
+  console.warn('⚠️ [OpenAI] API no configurada. El fallback a GPT no estará disponible.');
+}
+
+// Mapa para historiales de chat con GPT
+const chatHistories = new Map();
+
+// Mensaje del sistema personalizado para GPT
+const SYSTEM_PROMPT = `Eres un asistente virtual de la Municipalidad de San Martín. Atiendes consultas ciudadanas relacionadas con distintas áreas:
+
+- Economía Social y Asociativismo
+- Punto Digital
+- Incubadora de Empresas
+- Escuela de Oficios Manuel Belgrano
+- Programas Nacionales
+- Trámites y contacto general con el municipio
+
+Responde en español con un lenguaje claro, humano y accesible. Usa emojis ocasionalmente para hacer la conversación más amigable.`;
+
+// 🔌 Inicializar Express + HTTP + Socket.IO
+const app = express();
+const server = http.createServer(app);
+const io = new SocketIOServer(server);
+
+// Middleware para JSON
+app.use(express.json());
+
+// 🌐 Estado de la sesión
+let isClientReady = false;
+
+// 📲 Configurar cliente WhatsApp con Puppeteer mejorado
 const client = new Client({
-    authStrategy: new LocalAuth({
-        dataPath: './whatsapp-sessions'
-    }),
-    puppeteer: {
-        headless: true,
-        args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-gpu',
-            '--disable-software-rasterizer',
-            '--single-process',
-            '--no-zygote',
-            '--disable-extensions',
-            '--disable-background-networking',
-            '--disable-sync',
-            '--disable-default-apps',
-            '--disable-translate',
-            '--disable-features=site-per-process',
-            '--disable-background-timer-throttling',
-            '--disable-renderer-backgrounding',
-            '--disable-device-discovery-notifications',
-            '--js-flags=--max-old-space-size=128' // Limita la memoria de V8
-        ],
-        executablePath: '/usr/bin/google-chrome'
-    }
+  authStrategy: new LocalAuth({ dataPath: './session' }),
+  puppeteer: {
+    headless: true,
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage'
+    ],
+    defaultViewport: null,
+    timeout: 60000 // 60 segundos
+  }
 });
 
-// Configuración del servidor Express
-const app = express();
-const PORT = process.env.PORT || 3000;
+// 🏠 Ruta raíz: página QR y estado
+app.get('/', (req, res) => {
+  res.send(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>WhatsApp QR</title>
+  <style>
+    body { display:flex; flex-direction:column; align-items:center; font-family:sans-serif; margin-top:50px; }
+    #qr img { width:300px; }
+    button { margin-top:10px; padding:8px 12px; font-size:16px; }
+  </style>
+</head>
+<body>
+  <h1>📲 Escanea el QR con WhatsApp Web</h1>
+  <div id="qr">⏳ Esperando QR...</div>
+  <p id="status">Estado: inicializando...</p>
+  <button onclick="location.reload()">🔄 Refrescar página</button>
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    socket.on('qr', qr => {
+      document.getElementById('qr').innerHTML = '<img src="' + qr + '" />';
+      document.getElementById('status').innerText = '📥 QR recibido';
+    });
+    socket.on('ready', () => document.getElementById('status').innerText = '✅ Conectado');
+    socket.on('authenticated', () => document.getElementById('status').innerText = '🔐 Autenticado');
+    socket.on('auth_failure', msg => document.getElementById('status').innerText = '🚨 Auth failure: ' + msg);
+    socket.on('disconnected', reason => document.getElementById('status').innerText = '🔌 Desconectado: ' + reason);
+  </script>
+</body>
+</html>`);
+});
 
-// Middleware
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// 📡 Estado de conexión
+app.get('/status', (req, res) => res.json({ connected: isClientReady }));
 
-// Variables de estado
-let isClientReady = false;
-let qrCodeData = null;
+// 🔌 Socket.IO
+io.on('connection', () => console.log('🔌 Frontend conectado'));
 
-// Eventos del cliente WhatsApp
-client.on('qr', (qr) => {
-    console.log('QR Code generado:');
-    qrcode.generate(qr, { small: true });
-    qrCodeData = qr;
+// 🌟 Eventos de cliente WhatsApp
+client.on('qr', async qr => {
+  console.log('📸 QR recibido');
+  const url = await qrcode.toDataURL(qr).catch(err => { console.error('❌ QR error:', err); });
+  io.emit('qr', url);
 });
 
 client.on('ready', () => {
-    console.log('✅ Cliente WhatsApp conectado y listo!');
-    isClientReady = true;
-    qrCodeData = null;
+  isClientReady = true;
+  console.log('✅ Cliente listo');
+  io.emit('ready');
 });
 
 client.on('authenticated', () => {
-    console.log('✅ Cliente autenticado correctamente');
+  console.log('🔐 Autenticado');
+  io.emit('authenticated');
 });
 
-client.on('auth_failure', (msg) => {
-    console.error('❌ Error de autenticación:', msg);
+client.on('auth_failure', msg => {
+  isClientReady = false;
+  console.error('🚨 Auth failure:', msg);
+  io.emit('auth_failure', msg);
+  // Reinicializar después de fallo
+  setTimeout(() => initializeClient(), 10000);
 });
 
-client.on('disconnected', (reason) => {
-    console.log('❌ Cliente desconectado:', reason);
-    isClientReady = false;
+client.on('disconnected', reason => {
+  isClientReady = false;
+  console.warn('🔌 Desconectado:', reason);
+  io.emit('disconnected', reason);
+  setTimeout(() => initializeClient(), 5000);
 });
 
-// Manejo de mensajes recibidos
-client.on('message', async (message) => {
+// 📨 Procesamiento de mensajes entrantes
+client.on('message', async msg => {
+  const userId = msg.from;
+  const incoming = msg.body;
+  console.log(`📥 [Mensaje] ${userId}: ${incoming}`);
+
+  try {
+    // Obtener datos del usuario desde Firestore
+    const userData = await firestoreService.getUserData(userId);
+    
+    // Verificar comandos de transferencia a humano/bot
+    if (await handleHumanTransfer(msg, userData)) return;
+    if (await handleBotReturn(msg, userData)) return;
+    if (userData.human) return; // Si está en modo humano, no procesar
+    
+    // Contador de intentos fallidos
+    const failedAttempts = userData.failedAttempts || 0;
+    
+    // Primero intentar con Dialogflow
     try {
-        console.log(`📩 Mensaje recibido de ${message.from}: ${message.body}`);
-        
-        // Ejemplo de respuesta automática
-        if (message.body.toLowerCase().includes('hola')) {
-            await message.reply('¡Hola! ¿En qué puedo ayudarte?');
+      const { replyText, contextData } = await dialogflowService.sendTextToDialogflow(userId, incoming, userData);
+      
+      // Si Dialogflow devuelve una respuesta válida (no es un fallback)
+      if (replyText && !replyText.includes('No entendí eso') && !replyText.includes('no estoy seguro')) {
+        // Resetear contador de intentos fallidos si hubo éxito
+        if (failedAttempts > 0) {
+          await firestoreService.updateUserData(userId, { 
+            ...userData, 
+            failedAttempts: 0 
+          });
         }
         
-        // Agregar más lógica de respuestas aquí
-        
-    } catch (error) {
-        console.error('Error procesando mensaje:', error);
-    }
-});
-
-// Rutas de la API
-app.get('/', (req, res) => {
-    res.json({
-        status: 'ok',
-        message: 'WhatsApp Bot API funcionando',
-        clientReady: isClientReady,
-        timestamp: new Date().toISOString()
-    });
-});
-
-// Endpoint para verificar estado
-app.get('/status', (req, res) => {
-    res.json({
-        ready: isClientReady,
-        qrCode: qrCodeData,
-        timestamp: new Date().toISOString()
-    });
-});
-
-// Endpoint para enviar mensajes
-app.post('/send-message', async (req, res) => {
-    try {
-        const { number, message } = req.body;
-        
-        if (!isClientReady) {
-            return res.status(503).json({
-                error: 'Cliente WhatsApp no está listo',
-                ready: false
-            });
+        await msg.reply(replyText);
+        console.log(`📤 [Respuesta Dialogflow] ${userId}: ${replyText}`);
+        return;
+      }
+      
+      // Si llegamos aquí, Dialogflow no entendió la consulta
+      console.log(`⚠️ [Dialogflow] No entendió la consulta: ${incoming}`);
+      
+      // Incrementar contador de intentos fallidos
+      const newFailedAttempts = failedAttempts + 1;
+      await firestoreService.updateUserData(userId, { 
+        ...userData, 
+        failedAttempts: newFailedAttempts 
+      });
+      
+      // Si hay demasiados intentos fallidos, sugerir hablar con un humano
+      if (newFailedAttempts >= 3) {
+        await msg.reply('Parece que estoy teniendo dificultades para entender tu consulta. ¿Te gustaría hablar con un operador humano? Escribe "operador" para ser derivado.');
+        return;
+      }
+      
+      // Intentar con GPT como fallback
+      if (openai) {
+        // Preparar historial de chat para GPT
+        let history = chatHistories.get(userId) || [];
+        if (history.length === 0) {
+          history.push({ role: 'system', content: SYSTEM_PROMPT });
         }
         
-        if (!number || !message) {
-            return res.status(400).json({
-                error: 'Número y mensaje son requeridos'
-            });
+        // Añadir el mensaje del usuario
+        history.push({ role: 'user', content: incoming });
+        
+        // Llamar a la API de OpenAI
+        const response = await openai.chat.completions.create({
+          model: 'gpt-3.5-turbo',
+          messages: history,
+        });
+        
+        const reply = response.choices[0]?.message?.content?.trim() || 
+                     'Disculpa, no pude procesar tu consulta.';
+        
+        // Guardar respuesta en el historial
+        history.push({ role: 'assistant', content: reply });
+        
+        // Limitar el tamaño del historial
+        if (history.length > 12) {
+          history = [history[0], ...history.slice(-11)];
+        }
+        chatHistories.set(userId, history);
+        
+        await msg.reply(reply);
+        console.log(`📤 [Respuesta GPT] ${userId}: ${reply}`);
+      } else {
+        // Si no hay OpenAI configurado, usar respuesta de fallback de Dialogflow
+        await msg.reply(replyText || 'No pude entender tu consulta. ¿Podrías reformularla?');
+      }
+    } catch (dialogflowError) {
+      console.error('❌ [Error Dialogflow]', dialogflowError);
+      
+      // Si falla Dialogflow y tenemos OpenAI, intentar con GPT
+      if (openai) {
+        let history = chatHistories.get(userId) || [];
+        if (history.length === 0) {
+          history.push({ role: 'system', content: SYSTEM_PROMPT });
         }
         
-        // Formatear número (agregar @c.us si no lo tiene)
-        const chatId = number.includes('@') ? number : `${number}@c.us`;
+        history.push({ role: 'user', content: incoming });
         
-        await client.sendMessage(chatId, message);
-        
-        res.json({
-            success: true,
-            message: 'Mensaje enviado correctamente',
-            to: number,
-            timestamp: new Date().toISOString()
+        const response = await openai.chat.completions.create({
+          model: 'gpt-3.5-turbo',
+          messages: history,
         });
         
-    } catch (error) {
-        console.error('Error enviando mensaje:', error);
-        res.status(500).json({
-            error: 'Error enviando mensaje',
-            details: error.message
-        });
+        const reply = response.choices[0]?.message?.content?.trim() || 
+                     'Disculpa, estamos experimentando dificultades técnicas.';
+        
+        history.push({ role: 'assistant', content: reply });
+        
+        if (history.length > 12) {
+          history = [history[0], ...history.slice(-11)];
+        }
+        chatHistories.set(userId, history);
+        
+        await msg.reply(reply);
+        console.log(`📤 [Respuesta GPT (fallback)] ${userId}: ${reply}`);
+      } else {
+        // Si no hay OpenAI, enviar mensaje de error genérico
+        await msg.reply('Lo siento, estamos experimentando dificultades técnicas. Por favor, intenta más tarde o escribe "operador" para hablar con una persona.');
+      }
     }
+  } catch (error) {
+    console.error('❌ [Error General]', error);
+    await msg.reply('Lo siento, ocurrió un error. Por favor, intenta más tarde o escribe "operador" para hablar con una persona.');
+  }
 });
 
-// Endpoint para obtener QR Code
-app.get('/qr', (req, res) => {
-    if (qrCodeData) {
-        res.json({
-            qr: qrCodeData,
-            ready: false
-        });
-    } else if (isClientReady) {
-        res.json({
-            message: 'Cliente ya está conectado',
-            ready: true
-        });
-    } else {
-        res.json({
-            message: 'QR Code no disponible',
-            ready: false
-        });
-    }
+// 🚨 Capturar promesas no manejadas
+process.on('unhandledRejection', reason => {
+  console.error('Unhandled Rejection:', reason);
+  setTimeout(() => initializeClient(), 10000);
 });
 
-// Health check para Fly.io
-app.get('/health', (req, res) => {
-    res.status(200).json({
-        status: 'healthy',
-        timestamp: new Date().toISOString()
-    });
-});
+/**
+ * Inicializar cliente con reintentos
+ */
+async function initializeClient() {
+  try {
+    await client.initialize();
+  } catch (err) {
+    console.error('❌ Error en initialize():', err);
+    setTimeout(() => initializeClient(), 10000);
+  }
+}
 
-// Manejo de errores globales
-process.on('unhandledRejection', (reason, promise) => {
-    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-});
+// Arrancar la inicialización
+initializeClient();
 
-process.on('uncaughtException', (error) => {
-    console.error('Uncaught Exception:', error);
-    process.exit(1);
-});
-
-// Graceful shutdown
-process.on('SIGINT', async () => {
-    console.log('🛑 Cerrando aplicación...');
+/**
+ * Ping periódico para asegurar contexto vivo
+ */
+setInterval(async () => {
+  if (client?.pupPage) {
     try {
-        await client.destroy();
-        process.exit(0);
-    } catch (error) {
-        console.error('Error cerrando cliente:', error);
-        process.exit(1);
+      await client.pupPage.title();
+    } catch (err) {
+      console.warn('🔄 Contexto muerto, reiniciando cliente');
+      initializeClient();
     }
-});
+  }
+}, 30000);
 
-process.on('SIGTERM', async () => {
-    console.log('🛑 SIGTERM recibido, cerrando aplicación...');
+/**
+ * Procesar lote y notificar webhook
+ */
+async function procesarLoteEnSegundoPlano(mensajes) {
+  console.log(`📨 Lote ${mensajes.length}`);
+  const results = [];
+  for (const { numero, mensaje } of mensajes) {
     try {
-        await client.destroy();
-        process.exit(0);
-    } catch (error) {
-        console.error('Error cerrando cliente:', error);
-        process.exit(1);
+      await client.sendMessage(`${numero}@c.us`, mensaje);
+      results.push({ numero, estado: 'OK', error: null, timestamp: new Date().toISOString() });
+      console.log(`✅ ${numero}`);
+    } catch (err) {
+      results.push({ numero, estado: 'ERROR', error: err.message, timestamp: new Date().toISOString() });
+      console.error(`❌ ${numero}:`, err);
     }
+  }
+  if (APPS_SCRIPT_WEBHOOK_URL) {
+    try {
+      await axios.post(APPS_SCRIPT_WEBHOOK_URL, { results }, {
+        headers: { 'Content-Type': 'application/json', 'x-webhook-secret': APPS_SCRIPT_WEBHOOK_SECRET },
+        timeout: 10000
+      });
+      console.log('🎉 Webhook ok');
+    } catch (e) {
+      console.error('🚨 Webhook error:', e);
+    }
+  }
+}
+
+// 🔔 Recepción de lote
+app.post('/enviarBatch', express.json(), (req, res) => {
+  const mensajes = Array.isArray(req.body.mensajes) ? req.body.mensajes : [];
+  console.log(`🔔 /enviarBatch ${mensajes.length}`);
+  procesarLoteEnSegundoPlano(mensajes);
+  res.status(202).send({ status: 'Iniciado' });
 });
 
-// Inicializar cliente WhatsApp
-console.log('🚀 Inicializando cliente WhatsApp...');
-client.initialize();
+/**
+ * Funciones para manejar transferencia a humano y retorno a bot
+ */
+async function handleHumanTransfer(msg, userData) {
+  if (msg.body.toLowerCase() === 'operador') {
+    await firestoreService.updateUserData(msg.from, { ...userData, human: true });
+    await msg.reply('Te paso con un operador. Cuando quieras volver a hablar con el bot, escribí "bot".');
+    return true;
+  }
+  return false;
+}
 
-// Iniciar servidor
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🌐 Servidor corriendo en puerto ${PORT}`);
-    console.log(`📱 Bot WhatsApp iniciado`);
-});
+async function handleBotReturn(msg, userData) {
+  if (msg.body.toLowerCase() === 'bot') {
+    await firestoreService.updateUserData(msg.from, { ...userData, human: false });
+    await msg.reply('Volviste con el bot 🤖. ¿En qué puedo ayudarte?');
+    return true;
+  }
+  return false;
+}
+
+// 🏁 Iniciar servidor
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => console.log(`🚀 Servidor escuchando en puerto ${PORT}`));
