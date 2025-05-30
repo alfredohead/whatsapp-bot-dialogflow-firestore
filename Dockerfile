@@ -1,16 +1,19 @@
 # Imagen base
 FROM node:18-slim
 
-# Install Chrome dependencies and Chrome
+# Install Chrome dependencies and Chromium
 RUN apt-get update && apt-get install -y \
-    chromium \
+    chromium-browser \
     fonts-ipafont-gothic \
     fonts-wqy-zenhei \
     fonts-thai-tlwg \
     fonts-kacst \
     fonts-liberation \
-    google-chrome-stable \
-    --no-install-recommends
+    wget \
+    gnupg \
+    ca-certificates \
+    --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
 WORKDIR /app
@@ -25,7 +28,7 @@ RUN npm install --production
 COPY . .
 
 # Set environment variables
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 ENV NODE_ENV=production
 
 # Start the application
