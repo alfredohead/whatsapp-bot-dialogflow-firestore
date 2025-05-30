@@ -1,18 +1,18 @@
-// Importaciones con sintaxis CommonJS
-require('dotenv').config();
-const axios = require('axios');
-const qrcode = require('qrcode');
-const http = require('http');
-const express = require('express');
-const { Client, LocalAuth } = require('whatsapp-web.js');
-const { Server: SocketIOServer } = require('socket.io');
-const { OpenAI } = require('openai');
-const fs = require('fs');
-const path = require('path');
+// Importaciones con sintaxis ES6
+import 'dotenv/config';
+import axios from 'axios';
+import qrcode from 'qrcode';
+import http from 'http';
+import express from 'express';
+import { Client, LocalAuth } from 'whatsapp-web.js';
+import { Server as SocketIOServer } from 'socket.io';
+import { OpenAI } from 'openai';
+import fs from 'fs';
+import path from 'path';
 
 // Importar servicios
-const dialogflowService = require('./services/dialogflow');
-const firestoreService = require('./services/firestore');
+import dialogflowService from './services/dialogflow.js';
+import firestoreService from './services/firestore.js';
 
 // 🚀 Variables de entorno
 const APPS_SCRIPT_WEBHOOK_URL = process.env.APPS_SCRIPT_WEBHOOK_URL;
