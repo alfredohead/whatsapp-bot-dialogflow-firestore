@@ -1,9 +1,9 @@
 # Imagen base
 FROM node:18-slim
 
-# Install Chrome dependencies and Chromium
+# Install dependencies and Chromium
 RUN apt-get update && apt-get install -y \
-    chromium-browser \
+    chromium \
     fonts-ipafont-gothic \
     fonts-wqy-zenhei \
     fonts-thai-tlwg \
@@ -27,8 +27,9 @@ RUN npm install --production
 # Copy rest of the application
 COPY . .
 
-# Set environment variables
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+# Set Puppeteer configurations
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 ENV NODE_ENV=production
 
 # Start the application
