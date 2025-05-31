@@ -1,11 +1,7 @@
 # Imagen base
-<<<<<<< HEAD
-FROM node:18-slim
-=======
 FROM node:20
->>>>>>> ac4794dc07619d934f1180cea54330ee0abef60e
 
-# Install dependencies and Chromium
+# Instalar dependencias necesarias para Chromium
 RUN apt-get update && apt-get install -y \
     chromium \
     fonts-ipafont-gothic \
@@ -19,33 +15,25 @@ RUN apt-get update && apt-get install -y \
     --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
-# Set working directory
+# Directorio de trabajo
 WORKDIR /app
 
-<<<<<<< HEAD
-# Copy package files
-=======
-# Copiar los archivos de dependencias
->>>>>>> ac4794dc07619d934f1180cea54330ee0abef60e
+# Copiar archivos de dependencias
 COPY package*.json ./
 
-# Install dependencies
+# Instalar dependencias de producción
 RUN npm install --production
 
-# Copy rest of the application
+# Copiar el resto de la aplicación
 COPY . .
 
-<<<<<<< HEAD
-# Set Puppeteer configurations
+# Configuraciones de Puppeteer y entorno
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 ENV NODE_ENV=production
 
-# Start the application
-=======
-# Puerto expuesto
+# Exponer el puerto de la app
 EXPOSE 3000
 
 # Comando de inicio
->>>>>>> ac4794dc07619d934f1180cea54330ee0abef60e
 CMD ["node", "index.js"]
