@@ -36,6 +36,4 @@ async function sendTextToDialogflow(userId, messageText, userData = {}) {
   }
 }
 
-module.exports = {
-  sendTextToDialogflow,
-};
+export default { sendTextToDialogflow };
