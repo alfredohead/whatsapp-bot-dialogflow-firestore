@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # fly.toml app configuration file generated for asistente-whatsapp on 2025-05-30T13:06:42-03:00
 #
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
@@ -41,3 +42,47 @@ primary_region = 'gru'
   memory = '2gb'
   cpu_kind = 'shared'
   cpus = 1
+=======
+# fly.toml app configuration file generated for asistente-whatsapp-twilight-leaf-7511 on 2025-03-31T19:14:51-03:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = "asistente-whatsapp"
+primary_region = "gru"
+
+[env]
+  NODE_ENV = "production"
+  PORT = "3000"
+  GOOGLE_PROJECT_ID = "asistentedependencia-mwqx"
+  OPENAI_API_KEY = "{{ env.OPENAI_API_KEY }}"
+  FIREBASE_JSON = "{{ env.FIREBASE_JSON }}"
+  PUPPETEER_EXECUTABLE_PATH = "/usr/bin/chromium-browser"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[experimental]
+  auto_rollback = true
+
+[[mounts]]
+  source = "whatsapp_data"
+  destination = "/app/session"
+
+[[services]]
+  internal_port = 3000
+  protocol = "tcp"
+
+  [[services.ports]]
+    handlers = ["http"]
+    port = 80
+
+  [[services.ports]]
+    handlers = ["tls", "http"]
+    port = 443
+
+  [[services.tcp_checks]]
+    interval = "30s"
+    timeout = "2s"
+    restart_limit = 0
+>>>>>>> ac4794dc07619d934f1180cea54330ee0abef60e

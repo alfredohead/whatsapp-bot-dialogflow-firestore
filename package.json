@@ -1,11 +1,16 @@
 {
-  "name": "whatsapp-bot-dialogflow-firestore",
+  "name": "asistente-whatsapp",
   "version": "1.0.0",
+<<<<<<< HEAD
   "description": "Bot de WhatsApp con integración de Dialogflow y GPT",
+=======
+  "description": "Bot de WhatsApp desplegado en Fly.io",
+>>>>>>> ac4794dc07619d934f1180cea54330ee0abef60e
   "main": "index.js",
   "type": "module",
   "scripts": {
     "start": "node index.js",
+<<<<<<< HEAD
     "dev": "nodemon index.js"
   },
   "keywords": [],
@@ -24,5 +29,26 @@
   },
   "devDependencies": {
     "nodemon": "^3.0.1"
+=======
+    "dev": "node --watch index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "whatsapp",
+    "bot",
+    "nodejs",
+    "fly.io"
+  ],
+  "author": "Tu Nombre",
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "qrcode-terminal": "^0.12.0",
+    "whatsapp-web.js": "^1.28.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+>>>>>>> ac4794dc07619d934f1180cea54330ee0abef60e
   }
 }
