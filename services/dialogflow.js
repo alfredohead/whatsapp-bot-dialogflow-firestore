@@ -1,4 +1,4 @@
-const dialogflow = require('@google-cloud/dialogflow');
+import dialogflow from '@google-cloud/dialogflow';
 
 const credentials = JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON);
 const sessionClient = new dialogflow.SessionsClient({ credentials });
