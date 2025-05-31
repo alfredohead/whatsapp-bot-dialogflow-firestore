@@ -3,10 +3,10 @@ import axios from 'axios';
 import qrcode from 'qrcode';
 import http from 'http';
 import express from 'express';
-import whatsapp from 'whatsapp-web.js'; // Importa el módulo completo
-const { Client, LocalAuth } = whatsapp; // Extrae los objetos necesarios
 import { Server as SocketIOServer } from 'socket.io';
 import { OpenAI } from 'openai';
+import pkg from 'whatsapp-web.js';
+const { Client, LocalAuth } = pkg;
 
 // Importar servicios
 import dialogflowService from './services/dialogflow.js';
