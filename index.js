@@ -1,4 +1,3 @@
-// Importaciones con sintaxis ES6
 import 'dotenv/config';
 import axios from 'axios';
 import qrcode from 'qrcode';
@@ -7,8 +6,6 @@ import express from 'express';
 import { Client, LocalAuth } from 'whatsapp-web.js';
 import { Server as SocketIOServer } from 'socket.io';
 import { OpenAI } from 'openai';
-import fs from 'fs';
-import path from 'path';
 
 // Importar servicios
 import dialogflowService from './services/dialogflow.js';
@@ -21,11 +18,15 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
 // Configuración de OpenAI para fallback
 let openai;
-if (OPENAI_API_KEY) {
-  openai = new OpenAI({ apiKey: OPENAI_API_KEY });
-  console.log('✅ [OpenAI] API configurada correctamente');
-} else {
-  console.warn('⚠️ [OpenAI] API no configurada. El fallback a GPT no estará disponible.');
+try {
+  if (OPENAI_API_KEY) {
+    openai = new OpenAI({ apiKey: OPENAI_API_KEY });
+    console.log('✅ [OpenAI] API configurada correctamente');
+  } else {
+    console.warn('⚠️ [OpenAI] API no configurada. El fallback a GPT no estará disponible.');
+  }
+} catch (error) {
+  console.error('❌ [OpenAI] Error al configurar API:', error);
 }
 
 // Mapa para historiales de chat con GPT
@@ -362,6 +363,17 @@ app.post('/enviarBatch', express.json(), (req, res) => {
   procesarLoteEnSegundoPlano(mensajes);
   res.status(202).send({ status: 'Iniciado' });
 });
+
+// Limpieza periódica de historiales inactivos
+setInterval(() => {
+  const ahora = Date.now();
+  for (const [userId, history] of chatHistories.entries()) {
+    if (!history.lastAccess || (ahora - history.lastAccess) > 3600000) { // 1 hora
+      chatHistories.delete(userId);
+      console.log(`🧹 Limpiando historial inactivo de ${userId}`);
+    }
+  }
+}, 1800000); // Cada 30 minutos
 
 // 🏁 Iniciar servidor
 const PORT = process.env.PORT || 3000;
