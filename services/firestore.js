@@ -27,7 +27,7 @@ async function updateUserData(userId, newData) {
   }
 }
 
-module.exports = {
+export default {
   getUserData,
   updateUserData,
 };
