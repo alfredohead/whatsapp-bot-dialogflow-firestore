@@ -3,7 +3,8 @@ import axios from 'axios';
 import qrcode from 'qrcode';
 import http from 'http';
 import express from 'express';
-import { Client, LocalAuth } from 'whatsapp-web.js';
+import pkg from 'whatsapp-web.js';
+const { Client, LocalAuth } = pkg;
 import { Server as SocketIOServer } from 'socket.io';
 import { OpenAI } from 'openai';
 
