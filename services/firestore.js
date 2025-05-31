@@ -1,4 +1,4 @@
-const admin = require('firebase-admin');
+import admin from 'firebase-admin';
 
 if (!admin.apps.length) {
   const serviceAccount = JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON);
