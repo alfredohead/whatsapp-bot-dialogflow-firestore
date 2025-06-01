@@ -1,3 +1,5 @@
+app = "asistente-whatsapp"  # Añada esta línea con el nombre de su aplicación
+
 [build]
   dockerfile = "Dockerfile"
 
