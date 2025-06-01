@@ -1,39 +1,18 @@
-# Imagen base
-FROM node:20
+FROM ghcr.io/puppeteer/puppeteer:19.7.5
 
-# Instalar dependencias necesarias para Chromium
-RUN apt-get update && apt-get install -y \
-    chromium \
-    fonts-ipafont-gothic \
-    fonts-wqy-zenhei \
-    fonts-thai-tlwg \
-    fonts-kacst \
-    fonts-liberation \
-    wget \
-    gnupg \
-    ca-certificates \
-    --no-install-recommends \
-    && rm -rf /var/lib/apt/lists/*
-
-# Directorio de trabajo
 WORKDIR /app
 
 # Copiar archivos de dependencias
 COPY package*.json ./
 
-# Instalar dependencias de producción
-RUN npm install --production
+# Instalar dependencias
+RUN npm install
 
-# Copiar el resto de la aplicación
+# Copiar código fuente
 COPY . .
 
-# Configuraciones de Puppeteer y entorno
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
-ENV NODE_ENV=production
+# Configurar variable de entorno para Puppeteer
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
 
-# Exponer el puerto de la app
-EXPOSE 3000
-
-# Comando de inicio
+# Comando para iniciar la aplicación
 CMD ["node", "index.js"]

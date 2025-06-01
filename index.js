@@ -1,18 +1,16 @@
-// Versión ultra-minimalista - Solo WhatsApp + Dialogflow + GPT
+// Versión ultra-minimalista con configuración optimizada para Fly.io
 require('dotenv').config();
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
+
+// Configuración de Dialogflow (integrado directamente)
 const dialogflow = require('@google-cloud/dialogflow');
-const { OpenAI } = require('openai');
-
-// Configuración de credenciales
-const GOOGLE_CREDENTIALS = JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON || '{}');
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-
-// Configuración de Dialogflow
-const projectId = GOOGLE_CREDENTIALS.project_id;
 let sessionClient;
+let projectId;
+
 try {
+  const GOOGLE_CREDENTIALS = JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON || '{}');
+  projectId = GOOGLE_CREDENTIALS.project_id;
   sessionClient = new dialogflow.SessionsClient({ credentials: GOOGLE_CREDENTIALS });
   console.log('✅ [Dialogflow] Configurado correctamente');
 } catch (error) {
@@ -20,7 +18,10 @@ try {
 }
 
 // Configuración de OpenAI para fallback
+const { OpenAI } = require('openai');
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 let openai;
+
 if (OPENAI_API_KEY) {
   openai = new OpenAI({ apiKey: OPENAI_API_KEY });
   console.log('✅ [OpenAI] API configurada correctamente');
@@ -31,6 +32,7 @@ if (OPENAI_API_KEY) {
 // Mapa para historiales de chat con GPT
 const chatHistories = new Map();
 const userFailedAttempts = new Map();
+const humanModeUsers = new Set();
 
 // Mensaje del sistema personalizado para GPT
 const SYSTEM_PROMPT = `Eres un asistente virtual de la Municipalidad de San Martín. Atiendes consultas ciudadanas relacionadas con distintas áreas:
@@ -44,17 +46,27 @@ const SYSTEM_PROMPT = `Eres un asistente virtual de la Municipalidad de San Mart
 
 Responde en español con un lenguaje claro, humano y accesible. Usa emojis ocasionalmente para hacer la conversación más amigable.`;
 
+// Configuración optimizada de Puppeteer para entornos cloud/serverless
+const puppeteerOptions = {
+  headless: true,
+  args: [
+    '--no-sandbox',
+    '--disable-setuid-sandbox',
+    '--disable-dev-shm-usage',
+    '--disable-accelerated-2d-canvas',
+    '--no-first-run',
+    '--no-zygote',
+    '--single-process',
+    '--disable-gpu'
+  ],
+  executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+  timeout: 60000 // 60 segundos
+};
+
 // Configuración del cliente WhatsApp
 const client = new Client({
   authStrategy: new LocalAuth({ dataPath: './session' }),
-  puppeteer: {
-    headless: true,
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage'
-    ]
-  }
+  puppeteer: puppeteerOptions
 });
 
 // Eventos de WhatsApp
@@ -152,9 +164,6 @@ async function responderConGPT(userId, message) {
   }
 }
 
-// Mapa para rastrear usuarios en modo humano
-const humanModeUsers = new Set();
-
 // Procesamiento de mensajes entrantes
 client.on('message', async msg => {
   const userId = msg.from;
@@ -245,4 +254,11 @@ process.on('unhandledRejection', reason => {
 
 // Inicializar cliente
 console.log('🚀 [Iniciando] Bot de WhatsApp con Dialogflow y GPT...');
-client.initialize();
+client.initialize().catch(err => {
+  console.error('❌ [Error de inicialización]', err);
+  // Reintentar después de un tiempo
+  setTimeout(() => {
+    console.log('🔄 Reintentando inicialización...');
+    client.initialize();
+  }, 30000);
+});
